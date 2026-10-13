@@ -140,9 +140,12 @@ async function renderCard(): Promise<void> {
 }
 
 // 悬停显隐：条身划入展示，移出条身/卡片 250ms 后收起（缓冲防抖，允许在条↔卡间移动）
+// 点击任何按钮 → dismissCard 立即收起并挂起，直到鼠标离开后再次进入速览条才重新浮现
 let hideTimer = 0;
+let suppressCard = false;
 function showCard(): void {
   window.clearTimeout(hideTimer);
+  suppressCard = false; // 重新进入速览条：解除挂起，恢复正常悬停显隐
   void renderCard();
   card.classList.add("show");
   card.setAttribute("aria-hidden", "false");
@@ -153,8 +156,16 @@ function hideCard(): void {
     card.setAttribute("aria-hidden", "true");
   }, 250);
 }
-document.getElementById("mini")!.addEventListener("mouseenter", showCard);
-document.getElementById("mini")!.addEventListener("mouseleave", hideCard);
+/** 点击交互时收起预览卡：立即收起（不等 250ms），并挂起到下次进入 */
+function dismissCard(): void {
+  window.clearTimeout(hideTimer);
+  card.classList.remove("show");
+  card.setAttribute("aria-hidden", "true");
+  suppressCard = true;
+}
+const miniEl = document.getElementById("mini")!;
+miniEl.addEventListener("mouseenter", showCard);
+miniEl.addEventListener("mouseleave", hideCard);
 card.addEventListener("mouseenter", () => window.clearTimeout(hideTimer));
 card.addEventListener("mouseleave", hideCard);
 
@@ -163,27 +174,35 @@ function bindCardRows(root: HTMLElement): void {
   root.addEventListener("click", (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".c-row");
     const url = row?.dataset.url;
-    if (url) void emit("mini-navigate", url);
+    if (url) {
+      dismissCard();
+      void emit("mini-navigate", url);
+    }
   });
 }
 bindCardRows(cTodos);
 bindCardRows(cMsgs);
 document.getElementById("c-panel")!.addEventListener("click", () => {
+  dismissCard();
   void emit("mini-navigate", "panel");
 });
 
 // 点击交互：广播 mini-navigate，主窗唤起并跳对应页（见 main.ts）
 document.getElementById("m-panel")!.addEventListener("click", () => {
+  dismissCard();
   void emit("mini-navigate", "panel");
 });
 document.getElementById("m-msg")!.addEventListener("click", () => {
+  dismissCard();
   void emit("mini-navigate", "messages");
 });
 document.getElementById("m-todo")!.addEventListener("click", () => {
+  dismissCard();
   void emit("mini-navigate", "todos");
 });
-// 快捷功能：切到主窗「快捷功能」页
+// 快捷功能：与待办按钮同链路，切到主窗「快捷功能」页
 document.getElementById("m-quick")!.addEventListener("click", () => {
+  dismissCard();
   void emit("mini-navigate", "quick");
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口

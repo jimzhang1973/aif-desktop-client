@@ -80,24 +80,24 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   border-radius: 8px; cursor: pointer;
 }
 .c-foot:hover { background: rgba(59, 109, 240, 0.12); }
-.m-sep { flex: none; width: 20px; height: 1px; background: #c9ced8; }
+.m-sep { flex: none; width: 20px; height: 1px; background: #9aa3b2; }
 .m-btn {
   flex: none; width: 32px; height: 50px; border: none; border-radius: 9px;
   background: transparent; cursor: pointer; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 3px; padding: 0;
   transition: background 0.15s;
 }
-/* 打开面板：彩色实体按钮，一眼可辨「这是按钮」 */
+/* 打开面板：中性灰实体按钮，一眼可辨「这是按钮」 */
 #m-panel {
-  height: 42px; background: var(--accent);
-  box-shadow: 0 2px 6px rgba(59, 109, 240, 0.35);
+  height: 42px; background: #7b8493;
+  box-shadow: 0 2px 6px rgba(107, 114, 128, 0.35);
 }
 #m-panel svg { color: #fff; }
-#m-panel:hover { background: #2f5bd8; }
+#m-panel:hover { background: #6b7482; }
 .m-btn:hover { background: var(--surface-2); }
 .m-btn svg { flex: none; display: block; }
-.m-close { height: 26px; margin-top: 2px; background: transparent !important; }
-.m-close svg { width: 12px; height: 12px; color: var(--text-3); }
+.m-close { height: 30px; margin-top: 2px; background: transparent !important; }
+.m-close svg { width: 16px; height: 16px; color: var(--text-3); }
 .m-ico { display: flex; }
 .m-msg-ico { color: var(--accent); }
 .m-todo-ico { color: #f59e0b; }

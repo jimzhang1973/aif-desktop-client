@@ -334,6 +334,156 @@ function bindTabShortcuts() {
   });
 }
 
+// ---------------- Ctrl+K 全局命令面板 ----------------
+// 任意界面 Ctrl+K 唤起，一站直达：功能动作 / 待办 / 消息 / 常用入口四类源。
+// 主页面获得焦点时生效（标签页内嵌 webview 聚焦时按键归网页，属预期行为）。
+type PaletteItem = { label: string; hint: string; run: () => void };
+let paletteEl: HTMLElement | null = null;
+let paletteInput: HTMLInputElement | null = null;
+let paletteList: HTMLElement | null = null;
+let paletteHits: PaletteItem[] = [];
+let paletteIdx = 0;
+let paletteTodoCache: PaletteItem[] = [];
+
+/// 待办源异步进面板（拉取后缓存；面板开着时到货即重渲）
+async function loadPaletteTodos() {
+  try {
+    const rows = (await api.getTodos()).filter((t) => !t.done).slice(0, 30);
+    paletteTodoCache = rows.map((t) => ({
+      label: t.title,
+      hint: "待办",
+      run: () => (t.url ? void openUrl(t.url) : switchTab("todos")),
+    }));
+    if (paletteEl) renderPalette(paletteInput?.value || "");
+  } catch {
+    /* 未登录/接口失败：待办源留空 */
+  }
+}
+
+function paletteItems(): PaletteItem[] {
+  const acts: PaletteItem[] = [
+    { label: "打开：消息", hint: "功能", run: () => switchTab("messages") },
+    { label: "打开：待办", hint: "功能", run: () => switchTab("todos") },
+    { label: "打开：文档", hint: "功能", run: () => switchTab("docs") },
+    { label: "打开：空间", hint: "功能", run: () => switchTab("spaces") },
+    { label: "打开：快捷功能", hint: "功能", run: () => switchTab("quick") },
+    { label: "打开：我的 / 设置", hint: "功能", run: () => switchTab("profile") },
+    { label: "切换常用入口", hint: "功能", run: () => void openEntryDialog() },
+    { label: "切换全屏 / 面板模式", hint: "功能", run: () => void setLayoutMode(layoutMode === "full" ? "mini" : "full") },
+    { label: "新建标签页", hint: "功能", run: () => void newTab() },
+    { label: "刷新数据", hint: "功能", run: () => { switchTab(currentTab); void api.checkNow(); toast("正在刷新数据"); } },
+    { label: "AI 问答", hint: "功能", run: () => void openUrl(aiEntryUrl()) },
+    { label: "隐藏到托盘", hint: "功能", run: () => void win.hide() },
+  ];
+  // 消息源：当前已加载的历史消息（点击直达，与列表点击行为一致）
+  for (const m of msgState.items.slice(0, 40)) {
+    acts.push({ label: m.title, hint: "消息", run: () => void openUrl(m.url) });
+  }
+  // 常用入口源：打开切换弹窗（带凭据一键登录，不在面板里直接跳裸 URL）
+  for (const a of accountsCache) {
+    acts.push({
+      label: `${a.remark || a.username}（${a.username}@${a.url}）`,
+      hint: "入口",
+      run: () => void openEntryDialog(),
+    });
+  }
+  return [...acts, ...paletteTodoCache];
+}
+
+function renderPalette(query: string) {
+  if (!paletteList) return;
+  const kw = query.trim().toLowerCase();
+  const all = paletteItems();
+  paletteHits = (kw
+    ? all.filter((i) => i.label.toLowerCase().includes(kw) || i.hint.toLowerCase().includes(kw))
+    : all
+  ).slice(0, 12);
+  if (paletteIdx >= paletteHits.length) paletteIdx = Math.max(0, paletteHits.length - 1);
+  if (!paletteHits.length) {
+    paletteList.innerHTML = `<div class="pi-empty">没有匹配的结果</div>`;
+    return;
+  }
+  paletteList.innerHTML = paletteHits
+    .map(
+      (i, n) =>
+        `<div class="pi${n === paletteIdx ? " active" : ""}" data-n="${n}"><span class="pi-label">${esc(i.label)}</span><span class="pi-hint">${esc(i.hint)}</span></div>`,
+    )
+    .join("");
+  paletteList.querySelectorAll<HTMLElement>(".pi").forEach((n) => {
+    n.addEventListener("click", () => runPaletteItem(Number(n.dataset.n)));
+    n.addEventListener("mousemove", () => {
+      const i = Number(n.dataset.n);
+      if (i !== paletteIdx) {
+        paletteIdx = i;
+        renderPalette(paletteInput?.value || "");
+      }
+    });
+  });
+  paletteList.querySelector(".pi.active")?.scrollIntoView({ block: "nearest" });
+}
+
+function runPaletteItem(n: number) {
+  const item = paletteHits[n];
+  closePalette();
+  if (item) item.run();
+}
+
+function openPalette() {
+  if (paletteEl) return;
+  paletteEl = document.createElement("div");
+  paletteEl.className = "palette-mask";
+  paletteEl.innerHTML = `
+    <div class="palette">
+      <input class="palette-input" placeholder="搜索：功能 / 待办 / 消息 / 常用入口…" />
+      <div class="palette-list"></div>
+      <div class="palette-foot">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
+    </div>`;
+  document.body.appendChild(paletteEl);
+  paletteInput = paletteEl.querySelector<HTMLInputElement>(".palette-input");
+  paletteList = paletteEl.querySelector<HTMLElement>(".palette-list");
+  paletteIdx = 0;
+  void loadPaletteTodos();
+  renderPalette("");
+  paletteInput!.focus();
+  paletteInput!.addEventListener("input", () => {
+    paletteIdx = 0;
+    renderPalette(paletteInput!.value);
+  });
+  paletteInput!.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      paletteIdx = Math.min(paletteIdx + 1, paletteHits.length - 1);
+      renderPalette(paletteInput!.value);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      paletteIdx = Math.max(paletteIdx - 1, 0);
+      renderPalette(paletteInput!.value);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      runPaletteItem(paletteIdx);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closePalette();
+    }
+  });
+  paletteEl.addEventListener("mousedown", (e) => {
+    if (e.target === paletteEl) closePalette();
+  });
+}
+
+function closePalette() {
+  paletteEl?.remove();
+  paletteEl = null;
+  paletteInput = null;
+  paletteList = null;
+  paletteHits = [];
+}
+
+function togglePalette() {
+  if (paletteEl) closePalette();
+  else openPalette();
+}
+
 // [临时诊断] 布局偏移排查：把窗口内关键 DOM / 视口几何 + 主 webview 原生几何写到后端临时文件。
 // 确认 topbar/sidenav 缺失根因后即可删除本函数及全部 dumpLayout 调用。
 async function dumpLayout(tag: string) {
@@ -1171,10 +1321,11 @@ function msgCardHtml(m: HistoryMessage): string {
   const showSender = m.sender && !b.startsWith(m.sender.trim());
   const unread = unreadIds.has(m.id);
   return `
-      <div class="msg-row${unread ? " unread" : ""}" data-id="${esc(m.id)}" data-url="${esc(m.url)}" title="${esc([m.title, m.sender, m.time_str].filter(Boolean).join("　"))}">
+      <div class="msg-row${unread ? " unread" : ""}" data-id="${esc(m.id)}" data-url="${esc(m.url)}" data-title="${esc(m.title)}" data-body="${esc(b)}" title="${esc([m.title, m.sender, m.time_str].filter(Boolean).join("　"))}">
         <div class="msg-when">
           <div class="msg-hm">${esc(fmtRelTime(m.time_str))}</div>
           <div class="msg-cat" style="color:${ty.color};background:${ty.color}14" title="${esc(ty.label)}">${catWrap(ty.label)}</div>
+          <button class="snooze-btn" data-snooze type="button" title="30 分钟后提醒我">稍后</button>
         </div>
         <div class="msg-main">
           <div class="li-title">${unread ? '<span class="msg-unread-dot" title="未读"></span>' : ""}<span class="msg-ico" style="background:${ty.color}" title="${esc(ty.label)}"><svg viewBox="0 0 24 24">${ty.glyph}</svg></span><span class="msg-title-text">${esc(m.title)}</span></div>
@@ -1230,6 +1381,65 @@ function bindMessageItems(root: HTMLElement) {
       if (url) void openUrl(url);
     }),
   );
+  // 「稍后」按钮：30 分钟后重发系统通知（不打开消息，阻止冒泡避免触发行点击跳转）
+  root.querySelectorAll<HTMLElement>("[data-snooze]").forEach((btn) =>
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest("[data-id]") as HTMLElement | null;
+      if (!row) return;
+      snoozeMessage(
+        row.dataset.id || "",
+        row.dataset.title || "消息提醒",
+        (row.dataset.body || "").slice(0, 120),
+        row.dataset.url || "",
+      );
+    }),
+  );
+}
+
+// ---------------- 稍后提醒（消息行「稍后」按钮） ----------------
+// 到期后经 Rust fire_snooze 重发系统通知（点击可跳回消息并转已读）。
+// 计划持久化在 localStorage（重启后恢复）；休眠/长期关机导致超期 24h 的提醒直接丢弃。
+interface SnoozeItem {
+  id: string;
+  title: string;
+  body: string;
+  url: string;
+  /** 到期时刻（Unix 毫秒） */
+  at: number;
+}
+const SNOOZE_MS = 30 * 60 * 1000;
+let snoozes: SnoozeItem[] = JSON.parse(
+  localStorage.getItem("aif_snoozes") || "[]",
+) as SnoozeItem[];
+
+function persistSnoozes() {
+  localStorage.setItem("aif_snoozes", JSON.stringify(snoozes.slice(-100)));
+}
+
+function snoozeMessage(id: string, title: string, body: string, url: string) {
+  // 同一条消息重复点「稍后」→ 顺延而非叠加
+  snoozes = snoozes.filter((s) => s.id !== id);
+  snoozes.push({ id, title, body, url, at: Date.now() + SNOOZE_MS });
+  persistSnoozes();
+  toast("已设置 30 分钟后提醒");
+}
+
+async function fireDueSnoozes() {
+  if (!snoozes.length) return;
+  const now = Date.now();
+  const due = snoozes.filter((s) => s.at <= now);
+  if (!due.length) return;
+  snoozes = snoozes.filter((s) => s.at > now);
+  persistSnoozes();
+  for (const s of due) {
+    if (now - s.at > 24 * 3600 * 1000) continue; // 超期 24h 丢弃
+    try {
+      await api.fireSnooze(s.title, s.body, s.url);
+    } catch {
+      /* 通知失败忽略 */
+    }
+  }
 }
 
 // ---------------- 待办 Tab（我的事项：我收到的 / 我发出的填报 / 我发出的流程） ----------------
@@ -2048,6 +2258,24 @@ function renderProfile(content: HTMLElement) {
       </div>
     </div>
     <div class="set-row">
+      ${ico("#10b981", `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/><path d="m9 15 2 2 4-4"/>`)}
+      <div class="set-main">
+        <div class="set-title">每日定时摘要</div>
+        <div class="set-desc">每天固定时间推送一条汇总：待办 N 件未办结 + 今日新消息 M 条，帮你形成每天看一眼的习惯锚点</div>
+        <div class="set-block rule-row">
+          <label class="switch set-side"><input type="checkbox" id="set-digest" ${s.daily_digest_enabled ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
+          <span class="rule-sep">每天</span>
+          <input type="time" id="set-digest-time" value="${esc(s.daily_digest_time)}" />
+          <span class="rule-sep">推送</span>
+        </div>
+      </div>
+    </div>
+    <div class="set-row">
+      ${ico("#0ea5e9", `<rect x="2" y="3" width="5" height="18" rx="1.5"/><rect x="9" y="3" width="5" height="18" rx="1.5"/><path d="M17 8h4M17 12h4M17 16h4"/>`)}
+      <div class="set-main"><div class="set-title">迷你速览条</div><div class="set-desc">屏幕右缘常置一条小窗，悬停即可看到未读消息与待办数量，点击直达对应页面（不动主窗口）</div></div>
+      <label class="switch set-side"><input type="checkbox" id="set-minibar" ${localStorage.getItem("aif_mini_bar") === "1" ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
+    </div>
+    <div class="set-row">
       ${ico("#f59e0b", `<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M4 12h10M10 8l4 4-4 4"/>`)}
       <div class="set-main"><div class="set-title">自动登录</div><div class="set-desc">启动时用已存凭据静默登录（需验证码时会打开登录窗）</div></div>
       <label class="switch set-side"><input type="checkbox" id="set-autologin" ${s.auto_login ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
@@ -2105,6 +2333,12 @@ function renderProfile(content: HTMLElement) {
     void api.saveSettings(settings).catch(() =>
       toast("多入口切换状态保存失败，请点击「保存设置」重试"),
     );
+  });
+  // 「迷你速览条」拨动即生效：创建/关闭右缘常置小窗，状态存 localStorage（重启恢复）
+  document.getElementById("set-minibar")!.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    localStorage.setItem("aif_mini_bar", on ? "1" : "0");
+    void api.toggleMiniBar(on).catch(() => toast("速览条切换失败，请重试"));
   });
   bindHotkeyCapture();
   // 清除快捷键：立即注销系统热键并持久化（空串=注销）
@@ -2594,6 +2828,10 @@ async function saveSettings() {
     0,
     Math.min(365, Number((document.getElementById("set-escalate") as HTMLInputElement).value) || 0),
   );
+  // 每日定时摘要：开关 + 推送时间（HH:MM，Rust 侧解析失败按不触发处理）
+  settings.daily_digest_enabled = (document.getElementById("set-digest") as HTMLInputElement).checked;
+  settings.daily_digest_time =
+    (document.getElementById("set-digest-time") as HTMLInputElement).value || "09:00";
   const oldHotkey = settings.hotkey;
   settings.hotkey = ((document.getElementById("set-hotkey") as HTMLInputElement)?.value || "").trim();
   try {
@@ -2645,6 +2883,30 @@ async function main() {
   }
   bindPaneResize();
   bindTabShortcuts();
+  // Ctrl+K 全局命令面板（主页面聚焦时生效；标签页内嵌 webview 聚焦时按键归网页）
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      togglePalette();
+    }
+  });
+  // 稍后提醒：启动即补发超期提醒，之后每 30 秒轮检一次
+  void fireDueSnoozes();
+  window.setInterval(() => void fireDueSnoozes(), 30_000);
+  // 迷你速览条恢复（上次开启过则随启动重建）
+  if (localStorage.getItem("aif_mini_bar") === "1") {
+    void api.toggleMiniBar(true).catch(() => {});
+  }
+  // 速览条交互：点击计数/面板按钮 → 主窗唤起并跳对应页；关闭 → 记住状态
+  on<string>("mini-navigate", (target) => {
+    void win.show();
+    void win.unminimize();
+    void win.setFocus();
+    if (target === "messages" || target === "todos") switchTab(target as typeof currentTab);
+  });
+  on("mini-closed", () => {
+    localStorage.setItem("aif_mini_bar", "0");
+  });
   await bootstrap();
   // 启动即显示主窗：配置 visible:false，不再依赖托盘唤起（托盘仅作收起后的再次弹出）。
   // 面板态下 renderPanel→applyLayoutMode 已按 aif_layout 自动最大化，这里只负责「显出来」。

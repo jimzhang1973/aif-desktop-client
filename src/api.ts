@@ -85,6 +85,10 @@ export interface Settings {
   notify_mute_keywords: string;
   /** 待办超时提醒阈值（天，默认 2；0=关闭） */
   todo_escalate_days: number;
+  /** 每日定时摘要（默认 false）：每天固定时间推送待办/新消息汇总 */
+  daily_digest_enabled: boolean;
+  /** 每日摘要推送时间 "HH:MM"（默认 09:00） */
+  daily_digest_time: string;
 }
 
 export interface UserInfo {
@@ -216,6 +220,10 @@ export const _apiRaw = {
   setAutostart: (enable: boolean) => invoke("set_autostart", { enable }),
   // 设置/注销全局快捷键（空串=注销），成功后随设置持久化
   setHotkey: (hotkey: string) => invoke("set_hotkey", { hotkey }),
+  /** 稍后提醒到期：重发一条系统通知（点击可跳回消息） */
+  fireSnooze: (title: string, body: string, url: string) => invoke("fire_snooze", { title, body, url }),
+  /** 迷你速览条开关：屏幕右缘常置小窗（创建 / 关闭） */
+  toggleMiniBar: (enable: boolean) => invoke("toggle_mini_bar", { enable }),
   // 常用入口（多网址账号组，SM4 国密加密落盘；主键 项目+网址+账号，支持同项目多账号）
   accountList: () => invoke<AccountEntry[]>("account_list"),
   accountSave: (ops: boolean, url: string, username: string, password: string, remark: string) =>

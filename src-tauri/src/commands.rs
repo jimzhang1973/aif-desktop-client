@@ -2887,3 +2887,54 @@ pub fn debug_dump(_app: AppHandle, tag: String, payload: String) -> Result<(), S
 pub fn trace_invoke(cmd: String, phase: String) {
     log::info!("[ipc] {cmd} {phase}");
 }
+
+// ==================== P1：消息稍后提醒 + 迷你速览条 ====================
+
+/// 稍后提醒触发：前端本地定时器到期时调用，重发一条系统通知
+/// （登记 notify_urls 供点击反查跳转，链路与轮询通知完全一致）。
+#[tauri::command]
+pub fn fire_snooze(app: AppHandle, title: String, body: String, url: String) {
+    crate::poller::show_notification(&app, &title, &body, &url);
+}
+
+/// 迷你速览条：屏幕右缘常置小窗（无边框 / 置顶 / 不进任务栏 / 不抢焦点）。
+/// enable=true 创建（已存在则忽略）；false 关闭。数据与交互见 mini.html / src/mini.ts：
+/// 未读数读共享 localStorage，待办数 invoke get_todos，点击 emit mini-navigate 交主窗处理。
+#[tauri::command]
+pub fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String> {
+    let existing = app.get_webview_window("mini-bar");
+    if !enable {
+        if let Some(w) = existing {
+            let _ = w.close();
+        }
+        return Ok(());
+    }
+    if existing.is_some() {
+        return Ok(());
+    }
+    // 贴主屏右缘、垂直居中（逻辑坐标 = 物理像素 / 缩放比）
+    let (x, y) = match app.primary_monitor() {
+        Ok(Some(m)) => {
+            let scale = m.scale_factor();
+            let w = m.size().width as f64 / scale;
+            let h = m.size().height as f64 / scale;
+            (w - 74.0, ((h - 330.0) / 2.0).max(8.0))
+        }
+        _ => (0.0, 0.0),
+    };
+    tauri::WebviewWindowBuilder::new(&app, "mini-bar", WebviewUrl::App("mini.html".into()))
+        .title("速览条")
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .shadow(false)
+        // 白底：与主窗一致，避免深色主题下首帧黑块
+        .background_color(tauri::webview::Color(255, 255, 255, 255))
+        .inner_size(64.0, 330.0)
+        .position(x, y)
+        .build()
+        .map_err(|e| format!("创建速览条失败: {e}"))?;
+    Ok(())
+}

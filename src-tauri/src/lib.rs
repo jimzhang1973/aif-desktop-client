@@ -153,6 +153,8 @@ pub fn run() {
             commands::layout_mini,
             commands::debug_webview_rect,
             commands::debug_dump,
+            commands::fire_snooze,
+            commands::toggle_mini_bar,
             commands::trace_invoke,
         ])
         .run(tauri::generate_context!())

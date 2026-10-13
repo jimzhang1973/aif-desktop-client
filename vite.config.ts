@@ -18,5 +18,12 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     target: "es2021",
+    // 多页入口：主面板 index.html + 迷你速览条 mini.html（Rust 侧 WebviewUrl::App 加载）
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        mini: "mini.html",
+      },
+    },
   },
 });

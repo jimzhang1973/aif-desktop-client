@@ -56,10 +56,19 @@ pub struct Settings {
     /// 待办超时提醒阈值（天）：事项在本地可见超过 N 天仍未办结时弹一次升级提醒；0=关闭
     #[serde(default = "default_escalate_days")]
     pub todo_escalate_days: u64,
+    /// 每日定时摘要：每天固定时间推送一条「今日待办 N 件 / 今日新消息 M 条」（默认关闭）
+    #[serde(default)]
+    pub daily_digest_enabled: bool,
+    /// 每日摘要推送时间 "HH:MM"（本地时间，默认 09:00）
+    #[serde(default = "default_digest_time")]
+    pub daily_digest_time: String,
 }
 
 fn default_hotkey() -> String {
     "Ctrl+Alt+B".to_string()
+}
+fn default_digest_time() -> String {
+    "09:00".to_string()
 }
 fn default_dnd_start() -> String {
     "22:00".to_string()
@@ -159,6 +168,8 @@ impl Default for Settings {
             notify_dnd_end: default_dnd_end(),
             notify_mute_keywords: String::new(),
             todo_escalate_days: default_escalate_days(),
+            daily_digest_enabled: false,
+            daily_digest_time: default_digest_time(),
         }
     }
 }

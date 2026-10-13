@@ -58,6 +58,12 @@ pub fn start(state: Arc<AppState>, app: AppHandle) {
                 }
             };
             if url.is_empty() {
+                // 无跳转 URL 的通知（如每日摘要）：点击只唤起主面板
+                if let Some(w) = app.get_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
                 return;
             }
             if let Some(w) = app.get_window("main") {
@@ -193,6 +199,9 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
         }
         let _ = app.emit("todos-updated", ());
     }
+
+    // 5) 每日定时摘要：到达设定时间（触发窗口内且当天未发过）推送待办/消息汇总
+    check_daily_digest(state, app);
 
     // 3) 顶栏状态点：全部失败（会话过期/网络断开）才标记异常
     let _ = app.emit(
@@ -484,7 +493,78 @@ fn notify_grouped(app: &AppHandle, items: &[NewMessage]) {
     }
 }
 
-fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
+// ---------------- 每日定时摘要 ----------------
+// 每天到达设定时间后（60 分钟触发窗口，兼容最长 60 分钟的轮询间隔）推送一条汇总：
+// 未办结待办 N 件 + 今日新消息 M 条。当天只发一次（kv digest_last_date 记日期）。
+// 无跳转 URL，点击通知只唤起主面板（on_action 对空 URL 的处理）。
+fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
+    let settings = state.settings.lock().unwrap().clone();
+    if !settings.daily_digest_enabled {
+        return;
+    }
+    // 复用勿扰时段的时间解析规则（HH:MM）
+    let parse = |s: &str| -> Option<(u32, u32)> {
+        let (h, m) = s.trim().split_once(':')?;
+        let h: u32 = h.trim().parse().ok()?;
+        let m: u32 = m.trim().parse().ok()?;
+        if h > 23 || m > 59 {
+            return None;
+        }
+        Some((h, m))
+    };
+    let Some((hh, mm)) = parse(&settings.daily_digest_time) else {
+        return;
+    };
+    let (now_h, now_m) = local_hm();
+    let now_min = now_h * 60 + now_m;
+    let target = hh * 60 + mm;
+    // 触发窗口：目标时刻起 60 分钟内（now_min 恰好等于 target 也算，覆盖 [target, target+60)）
+    if now_min < target || now_min >= target + 60 {
+        return;
+    }
+    let n = chrono::Local::now();
+    let today = n.format("%Y-%m-%d").to_string();
+    // 本地时区当日 0 点的 Unix 秒（今日新消息统计起点）
+    let day0 = n
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .and_then(|t| t.and_local_timezone(chrono::Local).single())
+        .map(|t| t.timestamp())
+        .unwrap_or(0);
+    let (todo_cnt, msg_cnt, already) = {
+        let conn = state.db.lock().unwrap();
+        let already = db::kv_get(&conn, "digest_last_date").as_deref() == Some(today.as_str());
+        let todo_cnt: i64 = conn
+            .query_row("SELECT COUNT(1) FROM todos WHERE done=0", [], |r| r.get(0))
+            .unwrap_or(0);
+        let msg_cnt: i64 = conn
+            .query_row(
+                "SELECT COUNT(1) FROM messages WHERE received_at >= ?1",
+                [day0],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        (todo_cnt, msg_cnt, already)
+    };
+    if already {
+        return;
+    }
+    {
+        let conn = state.db.lock().unwrap();
+        let _ = db::kv_set(&conn, "digest_last_date", &today);
+    }
+    log::info!("[poll] 每日摘要：待办 {todo_cnt} 件，今日新消息 {msg_cnt} 条");
+    show_notification(
+        app,
+        "每日摘要",
+        &format!("待办 {todo_cnt} 件未办结，今日新消息 {msg_cnt} 条"),
+        "",
+    );
+}
+
+/// 桌面通知发送（登记 notify_urls 供点击反查）。pub(crate)：commands::fire_snooze 复用。
+pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {
+    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
     {
         let st = app.state::<AppState>();
         let mut q = st.notify_urls.lock().unwrap();

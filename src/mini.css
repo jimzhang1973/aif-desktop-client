@@ -1,0 +1,32 @@
+/* 迷你速览条（64×330 无边框小窗）：白底圆角竖条，图标 + 计数 */
+:root {
+  --accent: #3b6df0;
+  --danger: #e5484d;
+  --text: #1f2430;
+  --text-3: #8a94a8;
+  --surface-2: #f0f2f7;
+  --line: #eceef3;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
+body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; }
+#mini {
+  height: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; padding: 10px 6px;
+  background: #ffffff; border: 1px solid var(--line); border-radius: 14px;
+}
+.m-btn {
+  width: 46px; height: 52px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; cursor: pointer; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px; padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.m-btn:hover { background: var(--surface-2); border-color: var(--accent); }
+.m-btn svg { width: 20px; height: 20px; }
+.m-close { height: 34px; margin-top: 2px; }
+.m-close svg { width: 14px; height: 14px; color: var(--text-3); }
+.m-ico { display: flex; }
+.m-msg-ico { color: var(--accent); }
+.m-todo-ico { color: #f59e0b; }
+.m-count { font-size: 12px; font-weight: 600; color: var(--text-3); line-height: 1; }
+.m-count.hot { color: var(--danger); }

@@ -34,6 +34,9 @@ jobs:
       - name: Install frontend deps
         run: npm install
 
+      - name: Pre-sync version (避免 tauri 打包器不在 beforeBuildCommand 后重读 conf 导致的版本漂移)
+        run: node scripts/sync-version.mjs
+
       - name: Build Tauri app (universal-apple-darwin)
         uses: tauri-apps/tauri-action@v0
         env:

@@ -2897,12 +2897,14 @@ async function main() {
   if (localStorage.getItem("aif_mini_bar") === "1") {
     void api.toggleMiniBar(true).catch(() => {});
   }
-  // 速览条交互：点击计数/面板按钮 → 主窗唤起并跳对应页；关闭 → 记住状态
+  // 速览条交互：点击计数/面板按钮/卡片行 → 主窗唤起并跳对应页；关闭 → 记住状态
   on<string>("mini-navigate", (target) => {
     void win.show();
     void win.unminimize();
     void win.setFocus();
     if (target === "messages" || target === "todos") switchTab(target as typeof currentTab);
+    // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
+    else if (/^https?:/i.test(target)) void openUrl(target);
   });
   on("mini-closed", () => {
     localStorage.setItem("aif_mini_bar", "0");

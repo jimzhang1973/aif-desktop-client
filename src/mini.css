@@ -9,14 +9,14 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
-body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; display: flex; align-items: center; justify-content: center; }
+body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; position: relative; }
 /*
- * Windows 对无边框窗口有最小宽度限制（实测约 134 逻辑像素，随缩放变化），
- * 40px 窗口宽会被系统强制放宽且无法缩回。因此窗口宽度随系统、不做斗争：
- * #mini 固定 40×270 居中，两侧多余区域完全透明不可见，毛玻璃条外观恒定。
+ * 窗口为 340×340 透明容器（Rust 侧），可见元素全部绝对定位：
+ * 条贴右缘 40×270；悬停预览卡在条左侧展开（280 宽）。
  */
 #mini {
-  flex: none; width: 40px; height: 270px; overflow: hidden;
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 270px; overflow: hidden;
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 8px; padding: 8px 3px;
   /* 半透明白底 + 背景模糊：窗口本身 transparent(true)，透出桌面 */
@@ -26,6 +26,55 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; di
   border: 1px solid var(--line); border-radius: 12px;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.10);
 }
+
+/* ---------------- 悬停预览卡 ---------------- */
+#card {
+  position: absolute; right: 48px; top: 50%;
+  width: 280px; max-height: 320px;
+  transform: translateY(-50%) translateX(8px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+  overflow: hidden auto; scrollbar-width: thin;
+  display: flex; flex-direction: column;
+}
+#card.show {
+  opacity: 1; pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+.c-sec { padding: 8px 8px 2px; }
+.c-head {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 4px 6px; border-bottom: 1px solid var(--line);
+}
+.c-badge {
+  min-width: 18px; text-align: center; font-size: 11px; font-weight: 600;
+  color: var(--text-3); background: var(--surface-2); border-radius: 999px; padding: 1px 6px;
+}
+.c-badge.hot { color: #fff; background: var(--danger); }
+.c-rows { min-height: 30px; }
+.c-row {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 7px 6px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  line-height: 1.45; color: var(--text);
+}
+.c-row:hover { background: var(--surface-2); }
+.c-row + .c-row { border-top: 1px solid var(--line); }
+.c-row .r-title { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all; }
+.c-row .r-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-top: 5px; }
+.c-row .r-meta { flex: none; font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.c-empty { padding: 8px 6px 10px; font-size: 12px; color: var(--text-3); text-align: center; }
+.c-foot {
+  flex: none; margin: 2px 8px 8px; padding: 7px 0; text-align: center;
+  font-size: 12px; color: var(--accent); background: var(--surface-2);
+  border-radius: 8px; cursor: pointer;
+}
+.c-foot:hover { background: rgba(59, 109, 240, 0.12); }
 .m-btn {
   flex: none; width: 32px; height: 52px; border: none; border-radius: 9px;
   background: transparent; cursor: pointer; display: flex; flex-direction: column;

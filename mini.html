@@ -6,6 +6,18 @@
     <title>速览条</title>
   </head>
   <body>
+    <!-- 悬停预览卡：默认隐藏，悬停条身向左展开（数据见 mini.ts renderCard） -->
+    <div id="card" aria-hidden="true">
+      <div class="c-sec">
+        <div class="c-head">待办 <span class="c-badge" id="c-todo-n">0</span></div>
+        <div class="c-rows" id="c-todos"></div>
+      </div>
+      <div class="c-sec">
+        <div class="c-head">最新消息 <span class="c-badge" id="c-msg-n">0</span></div>
+        <div class="c-rows" id="c-msgs"></div>
+      </div>
+      <div class="c-foot" id="c-panel" title="打开主面板">打开面板 →</div>
+    </div>
     <!-- data-tauri-drag-region：按住空白区可拖动位置（按钮为子元素不触发拖拽，点击行为不变） -->
     <div id="mini" data-tauri-drag-region>
       <button class="m-btn" id="m-panel" title="打开面板">

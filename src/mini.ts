@@ -14,18 +14,36 @@ interface TodoRow {
   done: boolean;
 }
 
+interface MessageRow {
+  id: string;
+  title: string;
+  body: string;
+  url: string;
+  received_at: number;
+  muted?: boolean;
+}
+
 const msgN = document.getElementById("m-msg-n")!;
 const todoN = document.getElementById("m-todo-n")!;
+const card = document.getElementById("card")!;
+const cTodos = document.getElementById("c-todos")!;
+const cMsgs = document.getElementById("c-msgs")!;
+const cTodoN = document.getElementById("c-todo-n")!;
+const cMsgN = document.getElementById("c-msg-n")!;
 
-function unreadCount(): number {
+function unreadIds(): string[] {
   try {
     const ids = JSON.parse(
       localStorage.getItem("aif_unread_msg_ids") || "[]",
     ) as string[];
-    return Array.isArray(ids) ? ids.length : 0;
+    return Array.isArray(ids) ? ids : [];
   } catch {
-    return 0;
+    return [];
   }
+}
+
+function unreadCount(): number {
+  return unreadIds().length;
 }
 
 function paint(msg: number, todo: number) {
@@ -48,6 +66,104 @@ async function todoCount(): Promise<number> {
     return 0;
   }
 }
+
+// ==================== 悬停预览卡 ====================
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function trim(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  const now = Date.now();
+  if (now - ts * 1000 < 86_400_000)
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** 渲染预览卡内容：待办未办结 Top3 + 本地库最新 3 条消息（未读带红点） */
+async function renderCard(): Promise<void> {
+  const unread = new Set(unreadIds());
+  // 待办
+  try {
+    const rows = (await invoke<TodoRow[]>("get_todos")).filter((t) => !t.done);
+    const undone = rows.slice(0, 3);
+    cTodoN.textContent = String(rows.length);
+    cTodoN.classList.toggle("hot", rows.length > 0);
+    cTodos.innerHTML = undone.length
+      ? undone
+          .map(
+            (t) =>
+              `<div class="c-row" data-url="${esc(t.url)}"><div class="r-title">${esc(trim(t.title, 22))}</div></div>`,
+          )
+          .join("")
+      : `<div class="c-empty">暂无待办 🎉</div>`;
+  } catch {
+    cTodos.innerHTML = `<div class="c-empty">待办加载失败</div>`;
+  }
+  // 消息（本地轮询存档，最新在前）
+  try {
+    const rows = (await invoke<MessageRow[]>("get_messages")).sort(
+      (a, b) => b.received_at - a.received_at,
+    );
+    const latest = rows.slice(0, 3);
+    cMsgN.textContent = String(unread.size);
+    cMsgN.classList.toggle("hot", unread.size > 0);
+    cMsgs.innerHTML = latest.length
+      ? latest
+          .map(
+            (m) =>
+              `<div class="c-row" data-url="${esc(m.url)}">${
+                unread.has(m.id) ? `<span class="r-dot"></span>` : ``
+              }<div class="r-title">${esc(trim(m.body || m.title, 24))}</div><span class="r-meta">${esc(fmtTime(m.received_at))}</span></div>`,
+          )
+          .join("")
+      : `<div class="c-empty">暂无消息</div>`;
+  } catch {
+    cMsgs.innerHTML = `<div class="c-empty">消息加载失败</div>`;
+  }
+}
+
+// 悬停显隐：条身划入展示，移出条身/卡片 250ms 后收起（缓冲防抖，允许在条↔卡间移动）
+let hideTimer = 0;
+function showCard(): void {
+  window.clearTimeout(hideTimer);
+  void renderCard();
+  card.classList.add("show");
+  card.setAttribute("aria-hidden", "false");
+}
+function hideCard(): void {
+  hideTimer = window.setTimeout(() => {
+    card.classList.remove("show");
+    card.setAttribute("aria-hidden", "true");
+  }, 250);
+}
+document.getElementById("mini")!.addEventListener("mouseenter", showCard);
+document.getElementById("mini")!.addEventListener("mouseleave", hideCard);
+card.addEventListener("mouseenter", () => window.clearTimeout(hideTimer));
+card.addEventListener("mouseleave", hideCard);
+
+// 卡片行点击：携带 URL 广播，主窗唤起直达（main.ts 按 http 前缀识别）
+function bindCardRows(root: HTMLElement): void {
+  root.addEventListener("click", (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".c-row");
+    const url = row?.dataset.url;
+    if (url) void emit("mini-navigate", url);
+  });
+}
+bindCardRows(cTodos);
+bindCardRows(cMsgs);
+document.getElementById("c-panel")!.addEventListener("click", () => {
+  void emit("mini-navigate", "panel");
+});
 
 // 点击交互：广播 mini-navigate，主窗唤起并跳对应页（见 main.ts）
 document.getElementById("m-panel")!.addEventListener("click", () => {

@@ -290,7 +290,17 @@ fn create_tab_webview(
             }
             bs_new_window_strategy(&app2, u, f, &host2)
         })
-        .on_download(bs_download_handler);
+        .on_download(bs_download_handler)
+        // 首帧防黑闪：创建后先隐藏（见下方 hide），等真实导航提交（Started 且非
+        // about:）再显示——WebView2 控制器初始化/首帧合成期会露黑（深色系统尤甚），
+        // 隐藏到页面开始加载再显示，可见的首帧就是页面白底。
+        .on_page_load(|wv, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started
+                && !payload.url().as_str().starts_with("about:")
+            {
+                let _ = wv.show();
+            }
+        });
     let wv = main
         .add_child(
             builder,
@@ -298,8 +308,19 @@ fn create_tab_webview(
             PhysicalSize::new(rect[2].max(1) as u32, rect[3].max(1) as u32),
         )
         .map_err(|e| format!("创建标签页失败: {e}"))?;
+    // 创建即隐藏：覆盖控制器初始化窗口期，防首帧黑闪
+    let _ = wv.hide();
     inject_session_cookies(&wv, &host);
     wv.navigate(target).map_err(|e| e.to_string())?;
+    // 兜底：导航迟迟不提交（网络异常等）时 2s 后强制显示，避免标签永久空白
+    let fb_app = app.clone();
+    let fb_id = id.to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        if let Some(wv) = fb_app.get_webview(&fb_id) {
+            let _ = wv.show();
+        }
+    });
     Ok(())
 }
 

@@ -205,17 +205,44 @@ pub(crate) fn bs_new_window_strategy<R: Runtime>(
     let host2 = bs_host.to_string();
     match WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url.clone()))
         .title(&title)
+        // 显式白底：WebView2 默认底色跟随系统主题（深色模式首帧黑闪），B/S 页面为浅色
+        .background_color(tauri::webview::Color(255, 255, 255, 255))
         // 点击链接打开的 webview 窗口默认最大化
         .maximized(true)
         // 补齐 B/S 框架函数（top.openNewTab 等），弹窗内页面链接才打得开
         .initialization_script(BS_WINDOW_SHIM)
         // 位置尺寸沿用页面 window.open 特征 + 跨平台环境/会话一致性（官方 helper）
         .window_features(features)
+        // 首帧防黑闪：真实 URL 弹窗先隐藏，页面开始加载（Started 且非 about:）再显示；
+        // about:blank 弹窗无加载事件可等，创建后立即显示（由打开方接管句柄写入内容）
+        .visible(!blank)
         .on_new_window(move |u, f| bs_new_window_strategy(&app2, u, f, &host2))
         .on_download(bs_download_handler)
+        .on_page_load(|wv, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started
+                && !payload.url().as_str().starts_with("about:")
+            {
+                let _ = wv.show();
+            }
+        })
         .build()
     {
-        Ok(w) => NewWindowResponse::Create { window: w },
+        Ok(w) => {
+            if blank {
+                let _ = w.show();
+            } else {
+                // 兜底：导航迟迟不提交（网络异常等）时 2s 后强制显示，避免弹窗永久空白
+                let fb_app = app.clone();
+                let fb_label = label.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                    if let Some(x) = fb_app.get_webview_window(&fb_label) {
+                        let _ = x.show();
+                    }
+                });
+            }
+            NewWindowResponse::Create { window: w }
+        }
         Err(e) => {
             log::warn!("创建 B/S 新窗口失败（{e}），转交系统浏览器: {url}");
             open_in_system_browser(url.as_str());
@@ -404,6 +431,8 @@ pub async fn login_webview(app: AppHandle, state: State<'_, Arc<AppState>>) -> R
     }))
     // 显式白底：消除深色模式下 WebView2 首帧黑闪
     .background_color(tauri::webview::Color(255, 255, 255, 255))
+    // 首帧防黑闪：先隐藏创建，页面开始加载再显示（见 on_page_load Started 分支）
+    .visible(false)
     .inner_size(480.0, 680.0)
     .initialization_script(BS_WINDOW_SHIM)
     .on_navigation(|url| {
@@ -413,6 +442,8 @@ pub async fn login_webview(app: AppHandle, state: State<'_, Arc<AppState>>) -> R
     .on_page_load(move |wv, payload| match payload.event() {
         tauri::webview::PageLoadEvent::Started => {
             log::info!("[login] 开始加载: {}", payload.url());
+            // 页面开始加载即显示（创建时隐藏，覆盖 WebView2 首帧合成窗口期防黑闪）
+            let _ = wv.show();
         }
         tauri::webview::PageLoadEvent::Finished => {
             log::info!("[login] 加载完成: {}", payload.url());
@@ -424,6 +455,14 @@ pub async fn login_webview(app: AppHandle, state: State<'_, Arc<AppState>>) -> R
     {
         Ok(w) => {
             log::info!("[login] 窗口创建完成，开始监控 url");
+            // 兜底：导航迟迟不提交时 2s 后强制显示，避免登录窗永久空白
+            let fb_app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                if let Some(x) = fb_app.get_webview_window("login") {
+                    let _ = x.show();
+                }
+            });
             // 清理 webview 持久化数据，保证每次打开登录窗都是干净会话
             if let Err(e) = w.clear_all_browsing_data() {
                 log::warn!("[login] 清理浏览数据失败: {e}");
@@ -542,6 +581,8 @@ pub async fn open_conversation(
     .inner_size(1100.0, 800.0)
     // 点击链接打开的 webview 窗口默认最大化
     .maximized(true)
+    // 首帧防黑闪：先隐藏创建，页面开始加载（Started 且非 about:）再显示（见 on_page_load）
+    .visible(false)
     // 补齐 B/S 框架函数（top.openNewTab / openWin），页面内链接才能打开新窗口
     .initialization_script(BS_WINDOW_SHIM)
     // B/S 页面 window.open / target=_blank：混合策略——
@@ -553,12 +594,27 @@ pub async fn open_conversation(
     })
     // 页面下载（导出 / 附件下载）：落到系统「下载」目录，完成后发系统通知
     .on_download(bs_download_handler)
+    .on_page_load(|wv, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Started
+            && !payload.url().as_str().starts_with("about:")
+        {
+            let _ = wv.show();
+        }
+    })
     .build()
     .map_err(|e| format!("创建对话窗失败: {e}"))?;
 
     // 注入已保存会话（轮询确认落库后再 navigate，确保请求携带会话）
     inject_session_cookies(w.as_ref(), &host);
     let _ = w.navigate(target);
+    // 兜底：导航迟迟不提交（网络异常等）时 2s 后强制显示，避免窗口永久空白
+    let fb_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        if let Some(x) = fb_app.get_webview_window("conversation") {
+            let _ = x.show();
+        }
+    });
     Ok(())
 }
 

@@ -25,7 +25,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["time", "sync", "rt-multi-thread", "macros"] }
 reqwest = { version = "0.12", features = ["json", "cookies"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-keyring = { version = "3", features = ["windows-native"] }
+keyring = "3"
 dirs = "5"
 anyhow = "1"
 base64 = "0.22"
@@ -36,3 +36,7 @@ tauri-plugin-log = "2"
 # 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }

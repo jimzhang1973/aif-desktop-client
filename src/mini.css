@@ -97,7 +97,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
 .m-btn:hover { background: var(--surface-2); }
 .m-btn svg { flex: none; display: block; }
 .m-close { height: 30px; margin-top: 2px; background: transparent !important; }
-.m-close svg { width: 16px; height: 16px; color: var(--text-3); }
+.m-close svg { width: 16px; height: 16px; }
+/* 关闭图标：浅灰圆片 + 灰色圆头细 X；悬停整体过渡为红色警示 */
+.m-close .x-disc { fill: #edeff4; transition: fill 0.15s; }
+.m-close .x-mark { stroke: #8a94a8; stroke-width: 2.6; transition: stroke 0.15s; }
+.m-close:hover .x-disc { fill: #fdeaea; }
+.m-close:hover .x-mark { stroke: #e5484d; }
 .m-ico { display: flex; }
 .m-msg-ico { color: var(--accent); }
 .m-todo-ico { color: #f59e0b; }

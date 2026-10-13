@@ -2917,15 +2917,18 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
     if existing.is_some() {
         return Ok(());
     }
-    // 贴主屏右缘、垂直居中（逻辑坐标 = 物理像素 / 缩放比）
-    let (x, y) = match app.primary_monitor() {
-        Ok(Some(m)) => {
+    // 贴主屏右缘、垂直居中（逻辑坐标 = 物理像素 / 缩放比）。
+    // 宽度只给初值：Windows 对无边框窗口有最小宽度限制（实测 ~134 逻辑像素），
+    // 实际宽以创建后读取为准，条本体固定 40px 由 CSS 居中（见 mini.css）。
+    let monitor = app.primary_monitor().ok().flatten();
+    let (x, y) = match &monitor {
+        Some(m) => {
             let scale = m.scale_factor();
             let w = m.size().width as f64 / scale;
             let h = m.size().height as f64 / scale;
             (w - 48.0, ((h - 270.0) / 2.0).max(8.0))
         }
-        _ => (0.0, 0.0),
+        None => (0.0, 0.0),
     };
     tauri::WebviewWindowBuilder::new(&app, "mini-bar", WebviewUrl::App("mini.html".into()))
         .title("速览条")
@@ -2935,11 +2938,31 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         .resizable(false)
         .focused(false)
         .shadow(false)
-        // 透明窗口：CSS 圆角（14px）外侧不再露白/露黑，胶囊外观靠 mini.css 实现
+        // 透明窗口：CSS 圆角（12px）外侧不再露白/露黑，胶囊外观靠 mini.css 实现
         .transparent(true)
         .inner_size(40.0, 270.0)
         .position(x, y)
         .build()
         .map_err(|e| format!("创建速览条失败: {e}"))?;
+
+    // 创建后按实际窗口宽重定位：可见条（40px）居中于窗口，令其右缘贴屏幕右缘 8px
+    if let Some(win) = app.get_webview_window("mini-bar") {
+        let scale = win.scale_factor().unwrap_or(1.0);
+        let win_w = win
+            .inner_size()
+            .map(|s| s.width as f64 / scale)
+            .unwrap_or(40.0);
+        log::info!("[mini-bar] 实际窗口 {win_w}×{} 逻辑像素（scale={scale}）",
+            win.inner_size().map(|s| s.height as f64 / scale).unwrap_or(270.0));
+        if let Some(m) = &monitor {
+            let scale = m.scale_factor();
+            let sw = m.size().width as f64 / scale;
+            let sh = m.size().height as f64 / scale;
+            // 条右缘 = 窗口x + win_w/2 + 20 → 目标 sw - 8
+            let px = sw - 28.0 - win_w / 2.0;
+            let py = ((sh - 270.0) / 2.0).max(8.0);
+            let _ = win.set_position(tauri::LogicalPosition::new(px, py));
+        }
+    }
     Ok(())
 }

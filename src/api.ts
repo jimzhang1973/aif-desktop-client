@@ -15,6 +15,8 @@ export interface MessageRow {
   body: string;
   url: string;
   received_at: number;
+  /** 勿扰/静音命中的消息：不响铃不弹 toast（角标照常）；缺省视为未静音 */
+  muted?: boolean;
 }
 
 export interface HistoryMessage {
@@ -73,6 +75,16 @@ export interface Settings {
   tab_restore: boolean;
   /** 多入口切换：开启后全屏顶栏出现「切换入口」按钮（默认 false） */
   multi_entry: boolean;
+  /** 勿扰时段开关（默认 false）：时段内新消息不弹窗/不响铃/不闪托盘 */
+  notify_dnd_enabled: boolean;
+  /** 勿扰开始 "HH:MM"（默认 22:00，支持跨午夜） */
+  notify_dnd_start: string;
+  /** 勿扰结束 "HH:MM"（默认 08:00） */
+  notify_dnd_end: string;
+  /** 静音关键词（逗号分隔）：标题/正文命中即不弹窗不响铃（角标照常） */
+  notify_mute_keywords: string;
+  /** 待办超时提醒阈值（天，默认 2；0=关闭） */
+  todo_escalate_days: number;
 }
 
 export interface UserInfo {

@@ -45,6 +45,11 @@ pub fn init(path: &std::path::Path) -> anyhow::Result<Connection> {
             k TEXT PRIMARY KEY,
             v TEXT
         );
+        CREATE TABLE IF NOT EXISTS todo_seen (
+            id TEXT PRIMARY KEY,
+            first_seen INTEGER,
+            escalated INTEGER DEFAULT 0
+        );
         "#,
     )?;
     Ok(conn)
@@ -129,6 +134,71 @@ pub fn list_todos(conn: &Connection) -> anyhow::Result<Vec<TodoRow>> {
 pub fn set_done(conn: &Connection, id: &str, done: bool) -> anyhow::Result<()> {
     conn.execute("UPDATE todos SET done=? WHERE id=?", (done as i64, id))?;
     Ok(())
+}
+
+/// 待办超时升级检测：todos 为本轮「未办结」事项列表。
+/// - 首次出现的事项登记 first_seen；
+/// - 在本地可见超过 days 天且未提醒过的 → 标记 escalated 并返回（供弹升级通知）；
+/// - 顺带清理已从服务端消失的事项跟踪记录，防表膨胀。
+pub fn detect_overdue_todos(
+    conn: &Connection,
+    todos: &[TodoRow],
+    days: u64,
+    now: i64,
+) -> anyhow::Result<Vec<TodoRow>> {
+    let threshold = (days as i64).saturating_mul(86400);
+    let mut overdue = Vec::new();
+    for t in todos {
+        if t.id.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO todo_seen (id,first_seen,escalated) VALUES (?,?,0)",
+            [&t.id, &now.to_string()],
+        )?;
+        let (first_seen, escalated): (i64, i64) = conn.query_row(
+            "SELECT first_seen,escalated FROM todo_seen WHERE id=?",
+            [&t.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if escalated == 0
+            && first_seen > 0
+            && now.saturating_sub(first_seen) >= threshold
+        {
+            conn.execute("UPDATE todo_seen SET escalated=1 WHERE id=?", [&t.id])?;
+            overdue.push(t.clone());
+        }
+    }
+    // 清理已消失事项的跟踪记录（服务端不再返回 = 已办结/已移除）
+    let current: Vec<String> = todos.iter().map(|t| t.id.clone()).collect();
+    let stale: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT id FROM todo_seen")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.flatten().collect()
+    };
+    for id in stale {
+        if !current.contains(&id) {
+            let _ = conn.execute("DELETE FROM todo_seen WHERE id=?", [&id]);
+        }
+    }
+    Ok(overdue)
+}
+
+/// 托盘待办速览：未办结事项前 n 条（按最近更新倒序）
+pub fn list_pending_todos_top(conn: &Connection, n: usize) -> anyhow::Result<Vec<TodoRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id,title,url,done,updated_at FROM todos WHERE done=0 ORDER BY updated_at DESC LIMIT ?",
+    )?;
+    let rows = stmt.query_map([n as i64], |r| {
+        Ok(TodoRow {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            url: r.get(2)?,
+            done: r.get::<_, i64>(3)? != 0,
+            updated_at: r.get(4)?,
+        })
+    })?;
+    Ok(rows.flatten().collect())
 }
 
 pub fn get_settings(conn: &Connection) -> Settings {

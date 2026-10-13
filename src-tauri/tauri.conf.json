@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "巨鹏软件客户端",
-  "version": "5.1.235",
+  "version": "5.1.239",
   "identifier": "cn.aif.desktopclient",
   "build": {
     "frontendDist": "../dist",

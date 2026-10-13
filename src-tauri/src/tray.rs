@@ -1,11 +1,12 @@
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::menu::{IconMenuItem, Menu};
+use tauri::menu::{IconMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
+use crate::db;
 use crate::poller;
 use crate::state::AppState;
 
@@ -15,6 +16,10 @@ const TRAY_ID: &str = "main-tray";
 static FLASHING: AtomicBool = AtomicBool::new(false);
 /// 菜单当前已应用的深色状态：0=浅色 1=深色 2=未初始化（去重，避免无谓重建）
 static MENU_DARK: AtomicU8 = AtomicU8::new(2);
+/// 待办速览菜单版本号：待办集合变化时 +1，与已应用版本比对决定是否重建菜单
+static MENU_REV: AtomicU32 = AtomicU32::new(0);
+/// 已应用到菜单的待办版本号（u32::MAX = 未初始化）
+static MENU_REV_APPLIED: AtomicU32 = AtomicU32::new(u32::MAX);
 
 fn normal_icon() -> tauri::image::Image<'static> {
     tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
@@ -41,7 +46,8 @@ fn is_dark(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// 按当前主题构建托盘右键菜单（浅色=墨黑图标 / 深色=近白图标）
+/// 按当前主题 + 最新待办构建托盘右键菜单（浅色=墨黑图标 / 深色=近白图标）。
+/// 中段为「待办速览」：未办结事项前 5 条，点击直达办理页。
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let dark = is_dark(app);
     let show = IconMenuItem::with_id(
@@ -76,7 +82,51 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         Some(menu_icon(dark, include_bytes!("../icons/menu-quit.png"), include_bytes!("../icons/menu-quit-dark.png"))),
         None::<&str>,
     )?;
-    Menu::with_items(app, &[&show, &check, &settings, &quit])
+
+    // ---- 待办速览（动态段）----
+    let todos: Vec<db::TodoRow> = app
+        .try_state::<Arc<AppState>>()
+        .map(|st| {
+            let conn = st.db.lock().unwrap();
+            db::list_pending_todos_top(&conn, 5).unwrap_or_default()
+        })
+        .unwrap_or_default();
+    let count = todos.len();
+    let header_text = if count > 0 {
+        format!("待办速览（{count} 件未办）")
+    } else {
+        "待办速览（暂无未办）".to_string()
+    };
+    let header = MenuItem::with_id(app, "todo-head", &header_text, false, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    // 动态待办项：id 编码跳转 URL（todo|{url}），label 截断 18 字防菜单过宽
+    let mut todo_items: Vec<MenuItem<tauri::Wry>> = Vec::new();
+    for t in &todos {
+        let label: String = {
+            let mut s: String = t.title.chars().take(18).collect();
+            if t.title.chars().count() > 18 {
+                s.push('…');
+            }
+            if s.trim().is_empty() {
+                s = "（无标题事项）".to_string();
+            }
+            format!("· {s}")
+        };
+        let id = format!("todo|{}", t.url);
+        todo_items.push(MenuItem::with_id(app, &id, &label, true, None::<&str>)?);
+    }
+
+    // Menu::with_items 收 &dyn IsMenuItem 切片：把静态项与动态项统一装箱
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> =
+        vec![&show, &check, &sep1, &header];
+    for it in &todo_items {
+        items.push(it);
+    }
+    items.push(&sep2);
+    items.push(&settings);
+    items.push(&quit);
+    Menu::with_items(app, &items)
 }
 
 /// 主题变化 / 鼠标悬停托盘时：按当前系统主题重建菜单并套用。
@@ -87,18 +137,26 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 /// 挂在鼠标 Enter（悬停）上，离点击有充足时间差。
 fn sync_menu(app: &AppHandle) {
     let dark = is_dark(app) as u8;
-    if MENU_DARK.load(Ordering::SeqCst) == dark {
-        return; // 主题未变，无需重建
+    let rev = MENU_REV.load(Ordering::SeqCst);
+    if MENU_DARK.load(Ordering::SeqCst) == dark && MENU_REV_APPLIED.load(Ordering::SeqCst) == rev {
+        return; // 主题与待办均未变化，无需重建
     }
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         match build_menu(app) {
             Ok(m) => {
                 let _ = tray.set_menu(Some(m));
                 MENU_DARK.store(dark, Ordering::SeqCst);
+                MENU_REV_APPLIED.store(rev, Ordering::SeqCst);
             }
             Err(e) => log::warn!("重建托盘菜单失败: {e}"),
         }
     }
+}
+
+/// 待办集合变化时由 poller 调用：版本号 +1 并立即重建菜单（带去重）
+pub fn refresh_menu(app: &AppHandle) {
+    MENU_REV.fetch_add(1, Ordering::SeqCst);
+    sync_menu(app);
 }
 
 /// 构建托盘图标与右键菜单，并处理菜单事件
@@ -157,6 +215,14 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
                 let _ = app.emit("open-settings", ());
             }
             "quit" => app.exit(0),
+            // 待办速览项：弹出面板并直达办理页（todo|{url}，url 为空仅打开面板）
+            id if id.starts_with("todo|") => {
+                let url = id.trim_start_matches("todo|").to_string();
+                show_panel(app);
+                if !url.is_empty() {
+                    let _ = app.emit("open-message-url", url);
+                }
+            }
             _ => {}
         })
         .build(app)?;

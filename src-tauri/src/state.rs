@@ -41,13 +41,72 @@ pub struct Settings {
     /// 保存的多个账号（同一项目+网址下多账号）间一键切换（默认关闭）
     #[serde(default)]
     pub multi_entry: bool,
+    /// 勿扰时段开关：开启后时段内新消息只入库不计角标外的一切打扰（不弹窗/不响铃/不闪托盘）
+    #[serde(default)]
+    pub notify_dnd_enabled: bool,
+    /// 勿扰开始时间 "HH:MM"（本地时间；支持跨午夜区间，如 22:00~08:00）
+    #[serde(default = "default_dnd_start")]
+    pub notify_dnd_start: String,
+    /// 勿扰结束时间 "HH:MM"
+    #[serde(default = "default_dnd_end")]
+    pub notify_dnd_end: String,
+    /// 静音关键词（逗号分隔）：标题或正文命中任一关键词的消息不弹窗不响铃（角标照常）
+    #[serde(default)]
+    pub notify_mute_keywords: String,
+    /// 待办超时提醒阈值（天）：事项在本地可见超过 N 天仍未办结时弹一次升级提醒；0=关闭
+    #[serde(default = "default_escalate_days")]
+    pub todo_escalate_days: u64,
 }
 
 fn default_hotkey() -> String {
     "Ctrl+Alt+B".to_string()
 }
+fn default_dnd_start() -> String {
+    "22:00".to_string()
+}
+fn default_dnd_end() -> String {
+    "08:00".to_string()
+}
+fn default_escalate_days() -> u64 {
+    2
+}
 
 impl Settings {
+    /// 是否处于勿扰时段（本地时间；start<=end 为普通区间，start>end 为跨午夜区间）。
+    /// 时间格式非法时按不在勿扰处理。
+    pub fn in_dnd_window(&self, now_hm: (u32, u32)) -> bool {
+        if !self.notify_dnd_enabled {
+            return false;
+        }
+        let parse = |s: &str| -> Option<u32> {
+            let (h, m) = s.trim().split_once(':')?;
+            let h: u32 = h.trim().parse().ok()?;
+            let m: u32 = m.trim().parse().ok()?;
+            if h > 23 || m > 59 {
+                return None;
+            }
+            Some(h * 60 + m)
+        };
+        let (Some(a), Some(b)) = (parse(&self.notify_dnd_start), parse(&self.notify_dnd_end)) else {
+            return false;
+        };
+        let now = now_hm.0 * 60 + now_hm.1;
+        if a <= b {
+            now >= a && now < b
+        } else {
+            now >= a || now < b
+        }
+    }
+
+    /// 标题或正文是否命中静音关键词（逗号分隔，空词忽略）
+    pub fn hit_mute_keyword(&self, title: &str, body: &str) -> bool {
+        self.notify_mute_keywords
+            .split(|c: char| c == ',' || c == '，' || c == ';')
+            .map(|k| k.trim())
+            .filter(|k| !k.is_empty())
+            .any(|k| title.contains(k) || body.contains(k))
+    }
+
     /// 产品根路径名（不含斜杠），用于拼接所有 B/S 接口与页面路径
     pub fn app_root(&self) -> &'static str {
         if self.ops_product {
@@ -95,6 +154,11 @@ impl Default for Settings {
             hotkey: default_hotkey(),
             tab_restore: false,
             multi_entry: false,
+            notify_dnd_enabled: false,
+            notify_dnd_start: default_dnd_start(),
+            notify_dnd_end: default_dnd_end(),
+            notify_mute_keywords: String::new(),
+            todo_escalate_days: default_escalate_days(),
         }
     }
 }

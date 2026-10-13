@@ -517,6 +517,22 @@ input:focus, select:focus { border-color: var(--accent); }
 .interval-ctrl input { width: 80px; }
 .interval-ctrl .unit { color: var(--text-2); font-size: var(--fs-md); flex: none; }
 
+/* 提醒规则（我的：勿扰时段 / 静音关键词 / 待办超时提醒） */
+.rule-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rule-row input[type="time"] {
+  padding: 5px 6px; font-size: var(--fs-md); color: var(--text);
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-s);
+  outline: none;
+}
+.rule-row input[type="time"]:focus { border-color: var(--accent); }
+.rule-row .rule-sep { color: var(--text-3); font-size: var(--fs-md); flex: none; }
+.rule-input {
+  width: 100%; padding: 8px 9px; font-size: var(--fs-md); color: var(--text);
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-m);
+  outline: none;
+}
+.rule-input:focus { border-color: var(--accent); }
+
 /* 常用入口（我的-多网址账号组）：纵向表单块，控件随内容区宽度自适应 */
 .acct-block { display: flex; flex-direction: column; gap: 10px; }
 .acct-block select,

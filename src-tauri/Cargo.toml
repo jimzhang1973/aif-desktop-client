@@ -31,6 +31,8 @@ anyhow = "1"
 base64 = "0.22"
 log = "0.4"
 regex = "1"
+# 勿扰时段判断需要本地时间（系统时区）
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tauri-plugin-log = "2"
 
 # 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）

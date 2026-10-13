@@ -2015,6 +2015,39 @@ function renderProfile(content: HTMLElement) {
       <label class="switch set-side"><input type="checkbox" id="set-multi-entry" ${s.multi_entry ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
     <div class="set-row">
+      ${ico("#f43f5e", `<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>`)}
+      <div class="set-main">
+        <div class="set-title">勿扰时段</div>
+        <div class="set-desc">时段内新消息只计未读角标：不弹窗、不响铃、不闪托盘（支持跨午夜，如 22:00 ~ 08:00）</div>
+        <div class="set-block rule-row">
+          <label class="switch set-side"><input type="checkbox" id="set-dnd" ${s.notify_dnd_enabled ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
+          <input type="time" id="set-dnd-start" value="${esc(s.notify_dnd_start)}" />
+          <span class="rule-sep">~</span>
+          <input type="time" id="set-dnd-end" value="${esc(s.notify_dnd_end)}" />
+        </div>
+      </div>
+    </div>
+    <div class="set-row">
+      ${ico("#8b5cf6", `<path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8L4 8.8h6.1z"/>`)}
+      <div class="set-main">
+        <div class="set-title">消息静音关键词</div>
+        <div class="set-desc">标题或正文命中任一关键词的消息不弹窗、不响铃（未读角标照常）。多个关键词用逗号分隔，留空不启用</div>
+        <div class="set-block"><input type="text" id="set-mute-kw" class="rule-input" placeholder="如：公告,周报,会议通知" value="${esc(s.notify_mute_keywords)}" autocomplete="off" /></div>
+      </div>
+    </div>
+    <div class="set-row">
+      ${ico("#f59e0b", `<circle cx="12" cy="13" r="7"/><path d="M12 10v3l2 2"/><path d="M9 2h6"/>`)}
+      <div class="set-main">
+        <div class="set-title">待办超时提醒</div>
+        <div class="set-desc">事项在本地可见超过设定天数仍未办结时，弹一次升级提醒并闪托盘（每个事项只提醒一次）</div>
+        <div class="set-block rule-row">
+          <span class="rule-sep">超过</span>
+          <input type="number" id="set-escalate" class="rule-input" style="width:70px" min="0" max="365" value="${s.todo_escalate_days}" />
+          <span class="rule-sep">天未处理（0 = 关闭）</span>
+        </div>
+      </div>
+    </div>
+    <div class="set-row">
       ${ico("#f59e0b", `<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M4 12h10M10 8l4 4-4 4"/>`)}
       <div class="set-main"><div class="set-title">自动登录</div><div class="set-desc">启动时用已存凭据静默登录（需验证码时会打开登录窗）</div></div>
       <label class="switch set-side"><input type="checkbox" id="set-autologin" ${s.auto_login ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
@@ -2552,6 +2585,15 @@ async function saveSettings() {
   settings.autostart = (document.getElementById("set-autostart") as HTMLInputElement).checked;
   settings.tab_restore = (document.getElementById("set-tab-restore") as HTMLInputElement).checked;
   settings.multi_entry = (document.getElementById("set-multi-entry") as HTMLInputElement).checked;
+  // 提醒规则：勿扰时段 / 静音关键词 / 待办超时提醒
+  settings.notify_dnd_enabled = (document.getElementById("set-dnd") as HTMLInputElement).checked;
+  settings.notify_dnd_start = (document.getElementById("set-dnd-start") as HTMLInputElement).value || "22:00";
+  settings.notify_dnd_end = (document.getElementById("set-dnd-end") as HTMLInputElement).value || "08:00";
+  settings.notify_mute_keywords = ((document.getElementById("set-mute-kw") as HTMLInputElement).value || "").trim();
+  settings.todo_escalate_days = Math.max(
+    0,
+    Math.min(365, Number((document.getElementById("set-escalate") as HTMLInputElement).value) || 0),
+  );
   const oldHotkey = settings.hotkey;
   settings.hotkey = ((document.getElementById("set-hotkey") as HTMLInputElement)?.value || "").trim();
   try {
@@ -2629,13 +2671,15 @@ async function main() {
   });
   on("messages-updated", () => void refreshMessages(true));
   on<MessageRow>("new-message", (m) => {
-    playSound(settings?.sound || "chime");
     if (m.id) {
       unreadIds.add(m.id);
       persistUnread();
       setTabBadge("messages", unreadIds.size);
     }
     void refreshMessages(true);
+    // 勿扰时段/静音关键词命中的消息：只计未读角标，不响铃不弹 toast
+    if (m.muted) return;
+    playSound(settings?.sound || "chime");
     toast("新消息：" + m.title);
   });
   // 系统通知点击跳转：Rust 按通知标题反查消息 URL 后置前主窗口并 emit；

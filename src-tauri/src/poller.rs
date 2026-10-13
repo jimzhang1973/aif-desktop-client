@@ -16,6 +16,10 @@ pub struct NewMessage {
     pub title: String,
     pub body: String,
     pub url: String,
+    /// 消息来源：system / personal（托盘聚合分组用）
+    pub kind: String,
+    /// 是否静音（勿扰时段/命中静音关键词）：true 时不弹系统通知、不响铃、不闪托盘
+    pub muted: bool,
 }
 
 /// 轮询结果状态（顶栏状态点：绿=正常 / 红=异常）
@@ -103,6 +107,8 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
     let todo_ok = todo_res.is_ok();
 
     if let Ok(new) = msg_res {
+        // 通知规则快照：勿扰时段 / 静音关键词（Settings 为纯数据，clone 开销可忽略）
+        let settings_snap = state.settings.lock().unwrap().clone();
         let mut new_list: Vec<NewMessage> = Vec::new();
         {
             let conn = state.db.lock().unwrap();
@@ -112,11 +118,15 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
             for m in new {
                 if let Ok(true) = db::insert_message(&conn, &m.id, &m.title, &m.body, &m.url) {
                     if !baseline {
+                        let muted = settings_snap.in_dnd_window(local_hm())
+                            || settings_snap.hit_mute_keyword(&m.title, &m.body);
                         new_list.push(NewMessage {
                             id: m.id,
                             title: m.title,
                             body: m.body,
                             url: m.url,
+                            kind: m.kind,
+                            muted,
                         });
                     }
                 }
@@ -125,13 +135,16 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
                 let _ = db::kv_set(&conn, "notify_source_v2", "1");
             }
         }
+        // 系统通知（含同批聚合、静音过滤）；前端事件逐条发（角标逐条累加）
+        notify_grouped(app, &new_list);
         for m in &new_list {
-            show_notification(app, &m.title, &m.body, &m.url);
             let _ = app.emit("new-message", m.clone());
         }
         if !new_list.is_empty() {
-            // 托盘图标闪烁提醒新消息
-            crate::tray::flash(app);
+            // 有未静音消息才闪托盘（勿扰 = 不打扰）；前端据此刷新消息页
+            if new_list.iter().any(|m| !m.muted) {
+                crate::tray::flash(app);
+            }
             let _ = app.emit("messages-updated", ());
         }
     }
@@ -141,6 +154,42 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
         {
             let mut conn = state.db.lock().unwrap();
             let _ = db::upsert_todos(&mut conn, &todos);
+        }
+        // 待办超时升级提醒（todo_escalate_days=0 关闭）：事项在本地可见超过 N 天
+        // 仍未办结 → 每个事项升级提醒一次（escalated 标记防重复）
+        let escalate_days = state.settings.lock().unwrap().todo_escalate_days;
+        if escalate_days > 0 {
+            let now = now_secs();
+            let overdue = {
+                let conn = state.db.lock().unwrap();
+                db::detect_overdue_todos(&conn, &todos, escalate_days, now).unwrap_or_default()
+            };
+            for t in &overdue {
+                let t_title: String = t.title.chars().take(16).collect();
+                show_notification(
+                    app,
+                    &format!("待办超时：{t_title}"),
+                    &format!("该事项已超过 {escalate_days} 天未处理，请及时办理"),
+                    &t.url,
+                );
+            }
+            if !overdue.is_empty() {
+                crate::tray::flash(app);
+            }
+        }
+        // 托盘「待办速览」菜单：待办集合变化时才重建（签名比对去重）
+        let sig: String = todos
+            .iter()
+            .map(|t| format!("{}|{}|{}", t.id, t.done as u8, t.title))
+            .collect::<Vec<_>>()
+            .join(";");
+        {
+            let conn = state.db.lock().unwrap();
+            if db::kv_get(&conn, "tray_todos_sig").as_deref() != Some(sig.as_str()) {
+                let _ = db::kv_set(&conn, "tray_todos_sig", &sig);
+                drop(conn);
+                crate::tray::refresh_menu(app);
+            }
         }
         let _ = app.emit("todos-updated", ());
     }
@@ -277,7 +326,7 @@ async fn fetch_history_messages(
             }
             let url =
                 append_article_param(&g("mc"), absolute_url(base, root, &g("pcUrl")));
-            items.push(RawItem { id, title, body: content, url });
+            items.push(RawItem { id, kind: s, title, body: content, url });
         }
     }
     Ok(items)
@@ -317,6 +366,8 @@ pub(crate) fn append_article_param(mc: &str, url: String) -> String {
 #[derive(Clone)]
 struct RawItem {
     id: String,
+    /// 消息来源：system / personal（聚合分组用）
+    kind: String,
     title: String,
     body: String,
     url: String,
@@ -389,8 +440,51 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {
-    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
+/// 本地时区的当前时/分（勿扰时段判断用）
+fn local_hm() -> (u32, u32) {
+    use chrono::Timelike;
+    let n = chrono::Local::now();
+    (n.hour(), n.minute())
+}
+
+fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        "system" => "系统消息",
+        "personal" => "个人消息",
+        _ => "消息",
+    }
+}
+
+/// 桌面通知发送（含静音过滤与同批聚合）：
+/// - 静音（勿扰时段/关键词命中）消息不弹系统通知，前端也据此不响铃不弹 toast；
+/// - 同一来源（system/personal）同批新增 ≥3 条时合并为一条「{来源} ×N」，
+///   避免 Windows 横幅轰炸（横幅同时最多 3 个，其余只进通知中心）；
+/// - 合并通知点击跳转取该组最新一条的 URL（notify_urls 按标题登记）。
+fn notify_grouped(app: &AppHandle, items: &[NewMessage]) {
+    let mut groups: Vec<(String, Vec<&NewMessage>)> = Vec::new();
+    for m in items.iter().filter(|m| !m.muted) {
+        if let Some(g) = groups.iter_mut().find(|(k, _)| *k == m.kind) {
+            g.1.push(m);
+        } else {
+            groups.push((m.kind.clone(), vec![m]));
+        }
+    }
+    for (kind, group) in groups {
+        if group.len() >= 3 {
+            // 历史接口第一页最新在前，group[0] 即该组最新一条
+            let latest = group[0];
+            let title = format!("{} ×{}", kind_label(&kind), group.len());
+            let body: String = latest.body.chars().take(80).collect();
+            show_notification(app, &title, &body, &latest.url);
+        } else {
+            for m in group {
+                show_notification(app, &m.title, &m.body, &m.url);
+            }
+        }
+    }
+}
+
+fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
     {
         let st = app.state::<AppState>();
         let mut q = st.notify_urls.lock().unwrap();

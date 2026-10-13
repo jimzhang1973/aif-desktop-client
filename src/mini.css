@@ -87,13 +87,13 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   align-items: center; justify-content: center; gap: 3px; padding: 0;
   transition: background 0.15s;
 }
-/* 打开面板：中性灰实体按钮，一眼可辨「这是按钮」 */
+/* 打开面板：浅灰实体按钮，一眼可辨「这是按钮」 */
 #m-panel {
-  height: 42px; background: #7b8493;
-  box-shadow: 0 2px 6px rgba(107, 114, 128, 0.35);
+  height: 42px; background: #a8aebb;
+  box-shadow: 0 2px 6px rgba(148, 155, 166, 0.35);
 }
 #m-panel svg { color: #fff; }
-#m-panel:hover { background: #6b7482; }
+#m-panel:hover { background: #98a1ae; }
 .m-btn:hover { background: var(--surface-2); }
 .m-btn svg { flex: none; display: block; }
 .m-close { height: 30px; margin-top: 2px; background: transparent !important; }

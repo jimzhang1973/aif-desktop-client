@@ -2903,6 +2903,7 @@ async function main() {
   }
   // 速览条交互：点击计数/面板按钮/卡片行 → 主窗唤起并跳对应页；关闭 → 记住状态
   on<string>("mini-navigate", (target) => {
+    console.info("[mini-navigate] 主窗收到:", target);
     void win.show();
     void win.unminimize();
     void win.setFocus();
@@ -2911,6 +2912,7 @@ async function main() {
     else if (target === "quick") switchTab("quick");
     // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
     else if (/^https?:/i.test(target)) void openUrl(target);
+    else console.warn("[mini-navigate] 未识别的目标:", target);
   });
   on("mini-closed", () => {
     localStorage.setItem("aif_mini_bar", "0");

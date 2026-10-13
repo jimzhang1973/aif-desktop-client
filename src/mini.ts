@@ -203,6 +203,7 @@ document.getElementById("m-todo")!.addEventListener("click", () => {
 // 快捷功能：与待办按钮同链路，切到主窗「快捷功能」页
 document.getElementById("m-quick")!.addEventListener("click", () => {
   dismissCard();
+  console.info("[mini] 快捷功能点击 → emit mini-navigate=quick");
   void emit("mini-navigate", "quick");
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口

@@ -25,6 +25,7 @@ interface MessageRow {
 
 const msgN = document.getElementById("m-msg-n")!;
 const todoN = document.getElementById("m-todo-n")!;
+const quickN = document.getElementById("m-quick-n")!;
 const card = document.getElementById("card")!;
 const cTodos = document.getElementById("c-todos")!;
 const cMsgs = document.getElementById("c-msgs")!;
@@ -56,6 +57,15 @@ function paint(msg: number, todo: number) {
 
 async function refresh() {
   paint(unreadCount(), await todoCount());
+  try {
+    const entries = await invoke<{ ops: boolean; url: string; username: string }[]>(
+      "account_list",
+    );
+    quickN.textContent = String(entries.length);
+    quickN.classList.toggle("hot", entries.length > 0);
+  } catch {
+    quickN.textContent = "-";
+  }
 }
 
 async function todoCount(): Promise<number> {
@@ -89,7 +99,11 @@ function fmtTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** 渲染预览卡内容：待办未办结 Top3 + 本地库最新 3 条消息（未读带红点） */
+/** 卡片行前置图标（16px 内联 SVG）：待办=清单、消息=信封（未读变红） */
+const ICON_TODO = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 5.5 1 1 2-2"/><path d="m4 11.5 1 1 2-2"/><path d="m4 17.5 1 1 2-2"/></svg>`;
+const ICON_MSG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 15.5z"/><path d="m4.5 7 7.5 5 7.5-5"/></svg>`;
+
+/** 渲染预览卡内容：待办未办结 Top3 + 本地库最新 3 条消息（未读图标变红） */
 async function renderCard(): Promise<void> {
   const unread = new Set(unreadIds());
   // 待办
@@ -102,7 +116,7 @@ async function renderCard(): Promise<void> {
       ? undone
           .map(
             (t) =>
-              `<div class="c-row" data-url="${esc(t.url)}"><div class="r-title">${esc(trim(t.title, 22))}</div></div>`,
+              `<div class="c-row" data-url="${esc(t.url)}"><span class="r-ico i-todo">${ICON_TODO}</span><div class="r-title">${esc(trim(t.title, 22))}</div></div>`,
           )
           .join("")
       : `<div class="c-empty">暂无待办 🎉</div>`;
@@ -119,12 +133,10 @@ async function renderCard(): Promise<void> {
     cMsgN.classList.toggle("hot", unread.size > 0);
     cMsgs.innerHTML = latest.length
       ? latest
-          .map(
-            (m) =>
-              `<div class="c-row" data-url="${esc(m.url)}">${
-                unread.has(m.id) ? `<span class="r-dot"></span>` : ``
-              }<div class="r-title">${esc(trim(m.body || m.title, 24))}</div><span class="r-meta">${esc(fmtTime(m.received_at))}</span></div>`,
-          )
+          .map((m) => {
+            const isUnread = unread.has(m.id);
+            return `<div class="c-row" data-url="${esc(m.url)}"><span class="r-ico i-msg${isUnread ? " unread" : ""}">${ICON_MSG}</span><div class="r-title">${esc(trim(m.body || m.title, 24))}</div><span class="r-meta">${esc(fmtTime(m.received_at))}</span></div>`;
+          })
           .join("")
       : `<div class="c-empty">暂无消息</div>`;
   } catch {
@@ -174,6 +186,10 @@ document.getElementById("m-msg")!.addEventListener("click", () => {
 });
 document.getElementById("m-todo")!.addEventListener("click", () => {
   void emit("mini-navigate", "todos");
+});
+// 常用入口：主窗打开切换弹窗（选账号 → 保存并登录）
+document.getElementById("m-quick")!.addEventListener("click", () => {
+  void emit("mini-navigate", "entries");
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
 document.getElementById("m-close")!.addEventListener("click", () => {

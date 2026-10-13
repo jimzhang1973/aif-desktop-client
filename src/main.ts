@@ -2903,6 +2903,8 @@ async function main() {
     void win.unminimize();
     void win.setFocus();
     if (target === "messages" || target === "todos") switchTab(target as typeof currentTab);
+    // 速览条「快捷入口」按钮：打开常用入口切换弹窗（选账号 → 保存并登录）
+    else if (target === "entries") void openEntryDialog();
     // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
     else if (/^https?:/i.test(target)) void openUrl(target);
   });

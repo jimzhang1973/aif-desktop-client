@@ -1012,14 +1012,15 @@ input:focus, select:focus { border-color: var(--accent); }
   white-space: nowrap;
 }
 
-/* ---------------- 稍后提醒（消息行悬停显示） ---------------- */
+/* ---------------- 稍后提醒（消息行悬停显示，琥珀色胶囊） ---------------- */
 .snooze-btn {
-  display: none; margin-top: 6px; border: none; background: none; cursor: pointer;
-  font-size: var(--fs-xs); color: var(--text-3); padding: 1px 4px; border-radius: 4px;
-  font-family: inherit; line-height: 1.5;
+  display: none; margin-top: 6px; border: none; cursor: pointer;
+  font-size: var(--fs-xs); color: #b45309; background: #f59e0b1f;
+  padding: 2px 8px; border-radius: var(--radius-s);
+  font-family: inherit; line-height: 1.5; font-weight: 500;
 }
 .msg-row:hover .snooze-btn { display: inline-block; }
-.snooze-btn:hover { color: var(--accent); background: var(--accent-weak); }
+.snooze-btn:hover { color: #fff; background: #f59e0b; }
 
 /* ---------------- Ctrl+K 命令面板 ---------------- */
 .palette-mask {

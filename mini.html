@@ -6,20 +6,21 @@
     <title>速览条</title>
   </head>
   <body>
-    <div id="mini">
+    <!-- data-tauri-drag-region：按住空白区可拖动位置（按钮为子元素不触发拖拽，点击行为不变） -->
+    <div id="mini" data-tauri-drag-region>
       <button class="m-btn" id="m-panel" title="打开面板">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="5.2" width="17.6" height="13.6" rx="2.6"/><path d="m4.5 7.5 7.5 5.3 7.5-5.3"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="5.2" width="17.6" height="13.6" rx="2.6"/><path d="m4.5 7.5 7.5 5.3 7.5-5.3"/></svg>
       </button>
       <button class="m-btn" id="m-msg" title="未读消息：点击打开消息页">
-        <span class="m-ico m-msg-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 15.5z"/><path d="m4.5 7 7.5 5 7.5-5"/></svg></span>
+        <span class="m-ico m-msg-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 15.5z"/><path d="m4.5 7 7.5 5 7.5-5"/></svg></span>
         <span class="m-count" id="m-msg-n">0</span>
       </button>
       <button class="m-btn" id="m-todo" title="待办：点击打开待办页">
-        <span class="m-ico m-todo-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 5.5 1 1 2-2"/><path d="m4 11.5 1 1 2-2"/><path d="m4 17.5 1 1 2-2"/></svg></span>
+        <span class="m-ico m-todo-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 5.5 1 1 2-2"/><path d="m4 11.5 1 1 2-2"/><path d="m4 17.5 1 1 2-2"/></svg></span>
         <span class="m-count" id="m-todo-n">0</span>
       </button>
       <button class="m-btn m-close" id="m-close" title="关闭速览条（可在「我的」设置重新开启）">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
     </div>
     <script type="module" src="/src/mini.ts"></script>

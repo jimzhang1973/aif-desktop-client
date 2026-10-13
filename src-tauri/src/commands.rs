@@ -2935,8 +2935,8 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         .resizable(false)
         .focused(false)
         .shadow(false)
-        // 白底：与主窗一致，避免深色主题下首帧黑块
-        .background_color(tauri::webview::Color(255, 255, 255, 255))
+        // 透明窗口：CSS 圆角（14px）外侧不再露白/露黑，胶囊外观靠 mini.css 实现
+        .transparent(true)
         .inner_size(64.0, 330.0)
         .position(x, y)
         .build()

@@ -2773,9 +2773,20 @@ pub(crate) fn work_area_of(win: &tauri::Window) -> Option<(i32, i32, i32, i32)> 
     None
 }
 
+/// 跨平台工作区：tauri Monitor::work_area()（物理像素），macOS/Linux 可用
+/// （排除 Dock/菜单栏等系统保留区）。Windows 保留上方 Win32 精确版。
 #[cfg(not(windows))]
-pub(crate) fn work_area_of(_win: &tauri::Window) -> Option<(i32, i32, i32, i32)> {
-    None
+pub(crate) fn work_area_of(win: &tauri::Window) -> Option<(i32, i32, i32, i32)> {
+    let m = win.current_monitor().ok().flatten()?;
+    let wa = m.work_area();
+    let pos = wa.position;
+    let size = wa.size;
+    Some((
+        pos.x,
+        pos.y,
+        pos.x + size.width as i32,
+        pos.y + size.height as i32,
+    ))
 }
 
 /// 进入全屏（伪最大化）：窗口精确铺满所在显示器工作区，不经过原生 maximize。
@@ -2907,6 +2918,14 @@ pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: Strin
 /// runtime，主线程空闲可处理派发，与 login_webview / open_conversation 同模式。
 #[tauri::command]
 pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String> {
+    // macOS 不提供速览条：tao 未实现 skip_taskbar，透明窗口会进 Mission Control /
+    // 程序坞切换器，生态不符；设置页已隐藏开关，此处兜底 no-op。
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (&app, enable);
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
     let existing = app.get_webview_window("mini-bar");
     if !enable {
         if let Some(w) = existing {

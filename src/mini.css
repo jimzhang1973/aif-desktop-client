@@ -30,7 +30,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
 /* ---------------- 悬停预览卡 ---------------- */
 #card {
   position: absolute; right: 48px; top: 50%;
-  width: 280px; max-height: 320px;
+  width: 280px; max-height: 336px;
   transform: translateY(-50%) translateX(8px);
   opacity: 0; pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s ease;
@@ -80,17 +80,23 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   border-radius: 8px; cursor: pointer;
 }
 .c-foot:hover { background: rgba(59, 109, 240, 0.12); }
-.m-sep { flex: none; width: 20px; height: 1px; background: var(--line); }
+.m-sep { flex: none; width: 20px; height: 1px; background: #c9ced8; }
 .m-btn {
   flex: none; width: 32px; height: 50px; border: none; border-radius: 9px;
   background: transparent; cursor: pointer; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 3px; padding: 0;
   transition: background 0.15s;
 }
-#m-panel { height: 42px; }
+/* 打开面板：彩色实体按钮，一眼可辨「这是按钮」 */
+#m-panel {
+  height: 42px; background: var(--accent);
+  box-shadow: 0 2px 6px rgba(59, 109, 240, 0.35);
+}
+#m-panel svg { color: #fff; }
+#m-panel:hover { background: #2f5bd8; }
 .m-btn:hover { background: var(--surface-2); }
 .m-btn svg { flex: none; display: block; }
-.m-close { height: 26px; margin-top: 2px; }
+.m-close { height: 26px; margin-top: 2px; background: transparent !important; }
 .m-close svg { width: 12px; height: 12px; color: var(--text-3); }
 .m-ico { display: flex; }
 .m-msg-ico { color: var(--accent); }

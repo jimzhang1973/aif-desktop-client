@@ -2108,6 +2108,8 @@ async function loadUserInfo() {
 
 // ---------------- 快捷功能 Tab（B/S「快捷入口」九宫格卡片） ----------------
 let quickCache: QuickEntry[] | null = null;
+/** macOS：速览条功能不提供（窗口层级/托盘生态差异大，隐藏设置开关且不创建窗口） */
+const IS_MAC = /Mac/i.test(navigator.userAgent);
 let quickSearch = "";
 
 async function renderQuick(content: HTMLElement) {
@@ -2126,6 +2128,8 @@ async function renderQuick(content: HTMLElement) {
   try {
     const items = await api.getQuickEntries();
     quickCache = items;
+    // 共享给速览条窗口（mini.ts 读 aif_quick_count 显示徽标）
+    localStorage.setItem("aif_quick_count", String(items.length));
     renderQuickGrid(body, items, quickSearch);
   } catch (e) {
     body.innerHTML = `<div class="empty">加载失败：${esc(String(e).replace(/^"|"$/g, ""))}<br/><span class="hint">请确认已登录 B/S 系统后重试</span></div>`;
@@ -2270,11 +2274,11 @@ function renderProfile(content: HTMLElement) {
         </div>
       </div>
     </div>
-    <div class="set-row">
+    ${IS_MAC ? "" : `<div class="set-row">
       ${ico("#0ea5e9", `<rect x="2" y="3" width="5" height="18" rx="1.5"/><rect x="9" y="3" width="5" height="18" rx="1.5"/><path d="M17 8h4M17 12h4M17 16h4"/>`)}
       <div class="set-main"><div class="set-title">迷你速览条</div><div class="set-desc">屏幕右缘常置一条小窗，悬停即可看到未读消息与待办数量，点击直达对应页面（不动主窗口）</div></div>
       <label class="switch set-side"><input type="checkbox" id="set-minibar" ${localStorage.getItem("aif_mini_bar") === "1" ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
-    </div>
+    </div>`}
     <div class="set-row">
       ${ico("#f59e0b", `<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M4 12h10M10 8l4 4-4 4"/>`)}
       <div class="set-main"><div class="set-title">自动登录</div><div class="set-desc">启动时用已存凭据静默登录（需验证码时会打开登录窗）</div></div>
@@ -2893,8 +2897,8 @@ async function main() {
   // 稍后提醒：启动即补发超期提醒，之后每 30 秒轮检一次
   void fireDueSnoozes();
   window.setInterval(() => void fireDueSnoozes(), 30_000);
-  // 迷你速览条恢复（上次开启过则随启动重建）
-  if (localStorage.getItem("aif_mini_bar") === "1") {
+  // 迷你速览条恢复（上次开启过则随启动重建；macOS 不提供该功能）
+  if (!IS_MAC && localStorage.getItem("aif_mini_bar") === "1") {
     void api.toggleMiniBar(true).catch(() => {});
   }
   // 速览条交互：点击计数/面板按钮/卡片行 → 主窗唤起并跳对应页；关闭 → 记住状态
@@ -2903,8 +2907,8 @@ async function main() {
     void win.unminimize();
     void win.setFocus();
     if (target === "messages" || target === "todos") switchTab(target as typeof currentTab);
-    // 速览条「快捷入口」按钮：打开常用入口切换弹窗（选账号 → 保存并登录）
-    else if (target === "entries") void openEntryDialog();
+    // 速览条「快捷功能」按钮：切到主窗快捷功能页
+    else if (target === "quick") switchTab("quick");
     // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
     else if (/^https?:/i.test(target)) void openUrl(target);
   });

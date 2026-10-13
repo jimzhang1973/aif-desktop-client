@@ -57,15 +57,10 @@ function paint(msg: number, todo: number) {
 
 async function refresh() {
   paint(unreadCount(), await todoCount());
-  try {
-    const entries = await invoke<{ ops: boolean; url: string; username: string }[]>(
-      "account_list",
-    );
-    quickN.textContent = String(entries.length);
-    quickN.classList.toggle("hot", entries.length > 0);
-  } catch {
-    quickN.textContent = "-";
-  }
+  // 快捷功能数量：主窗加载列表后写入共享 localStorage（aif_quick_count）
+  const qc = Number(localStorage.getItem("aif_quick_count") || "0");
+  quickN.textContent = String(Number.isFinite(qc) ? qc : 0);
+  quickN.classList.toggle("hot", qc > 0);
 }
 
 async function todoCount(): Promise<number> {
@@ -109,7 +104,7 @@ async function renderCard(): Promise<void> {
   // 待办
   try {
     const rows = (await invoke<TodoRow[]>("get_todos")).filter((t) => !t.done);
-    const undone = rows.slice(0, 3);
+    const undone = rows.slice(0, 5);
     cTodoN.textContent = String(rows.length);
     cTodoN.classList.toggle("hot", rows.length > 0);
     cTodos.innerHTML = undone.length
@@ -128,7 +123,7 @@ async function renderCard(): Promise<void> {
     const rows = (await invoke<MessageRow[]>("get_messages")).sort(
       (a, b) => b.received_at - a.received_at,
     );
-    const latest = rows.slice(0, 3);
+    const latest = rows.slice(0, 5);
     cMsgN.textContent = String(unread.size);
     cMsgN.classList.toggle("hot", unread.size > 0);
     cMsgs.innerHTML = latest.length
@@ -187,9 +182,9 @@ document.getElementById("m-msg")!.addEventListener("click", () => {
 document.getElementById("m-todo")!.addEventListener("click", () => {
   void emit("mini-navigate", "todos");
 });
-// 常用入口：主窗打开切换弹窗（选账号 → 保存并登录）
+// 快捷功能：切到主窗「快捷功能」页
 document.getElementById("m-quick")!.addEventListener("click", () => {
-  void emit("mini-navigate", "entries");
+  void emit("mini-navigate", "quick");
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
 document.getElementById("m-close")!.addEventListener("click", () => {
@@ -203,7 +198,7 @@ void listen("new-message", () => void refresh());
 void listen("messages-updated", () => void refresh());
 void listen("todos-updated", () => void refresh());
 window.addEventListener("storage", (e) => {
-  if (e.key === "aif_unread_msg_ids") void refresh();
+  if (e.key === "aif_unread_msg_ids" || e.key === "aif_quick_count") void refresh();
 });
 window.setInterval(() => void refresh(), 60_000);
 

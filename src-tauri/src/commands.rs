@@ -2892,16 +2892,21 @@ pub fn trace_invoke(cmd: String, phase: String) {
 
 /// 稍后提醒触发：前端本地定时器到期时调用，重发一条系统通知
 /// （登记 notify_urls 供点击反查跳转，链路与轮询通知完全一致）。
+/// async：同步命令在主线程执行，通知插件调用不在主线程做，规避派发类挂起。
 #[tauri::command]
-pub fn fire_snooze(app: AppHandle, title: String, body: String, url: String) {
+pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: String) {
     crate::poller::show_notification(&app, &title, &body, &url);
 }
 
 /// 迷你速览条：屏幕右缘常置小窗（无边框 / 置顶 / 不进任务栏 / 不抢焦点）。
 /// enable=true 创建（已存在则忽略）；false 关闭。数据与交互见 mini.html / src/mini.ts：
 /// 未读数读共享 localStorage，待办数 invoke get_todos，点击 emit mini-navigate 交主窗处理。
+/// 【必须 async】铁律（10-11 白屏死锁 / 10-13 tabOpen 卡死同族根因）：
+/// 同步命令在主线程执行，WebviewWindowBuilder::build() 内部向主线程派发任务并
+/// 阻塞等待 → 主线程被本命令占用无法泵消息 → 自死锁。async 命令跑在 async
+/// runtime，主线程空闲可处理派发，与 login_webview / open_conversation 同模式。
 #[tauri::command]
-pub fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String> {
+pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String> {
     let existing = app.get_webview_window("mini-bar");
     if !enable {
         if let Some(w) = existing {

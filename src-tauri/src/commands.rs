@@ -2916,6 +2916,68 @@ pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: Strin
 /// 同步命令在主线程执行，WebviewWindowBuilder::build() 内部向主线程派发任务并
 /// 阻塞等待 → 主线程被本命令占用无法泵消息 → 自死锁。async 命令跑在 async
 /// runtime，主线程空闲可处理派发，与 login_webview / open_conversation 同模式。
+/// 速览条鼠标穿透状态：JS 侧卡片显隐时同步（set_mini_card_visible），
+/// 轮询线程据此决定可交互范围（卡片可见=整窗 / 隐藏=仅条身）。
+static MINI_CARD_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static MINI_POLLER_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static MINI_LAST_IGNORE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// JS 侧同步预览卡可见状态（showCard=true / hideCard·dismissCard=false）
+#[tauri::command]
+pub fn set_mini_card_visible(visible: bool) {
+    MINI_CARD_SHOWN.store(visible, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 启动光标位置轮询（150ms）：动态切换 mini-bar 的鼠标穿透。
+/// 根因：340×340 透明容器虽然视觉透明，OS 命中测试仍整块拦截，
+/// 遮挡下层窗口的点击。空闲时整窗 set_ignore_cursor_events(true) 全穿透，
+/// 光标进入条身（右缘 40 逻辑px 竖条）或卡片可见时恢复交互。
+/// 线程随窗口关闭自然退出（get_webview_window 返回 None 即 break）。
+fn spawn_mini_hit_test_poller(app: AppHandle) {
+    use std::sync::atomic::Ordering;
+    if MINI_POLLER_RUNNING.swap(true, Ordering::SeqCst) {
+        return; // 已在运行
+    }
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let Some(win) = app.get_webview_window("mini-bar") else {
+                break; // 窗口已关闭
+            };
+            if !win.is_visible().unwrap_or(false) {
+                continue;
+            }
+            let (Ok(cur), Ok(pos), Ok(size)) = (
+                app.cursor_position(),
+                win.outer_position(),
+                win.outer_size(),
+            ) else {
+                continue;
+            };
+            let scale = win.scale_factor().unwrap_or(1.0);
+            let left = pos.x as f64;
+            let top = pos.y as f64;
+            let right = left + size.width as f64;
+            let bottom = top + size.height as f64;
+            let inside = if MINI_CARD_SHOWN.load(Ordering::SeqCst) {
+                // 卡片可见：整窗可交互（条身 + 卡片 + 8px 间隙）
+                cur.x >= left && cur.x <= right && cur.y >= top && cur.y <= bottom
+            } else {
+                // 卡片隐藏：仅条身竖条可交互，其余透明区全部穿透
+                let bar_left = right - 40.0 * scale;
+                cur.x >= bar_left && cur.x <= right && cur.y >= top && cur.y <= bottom
+            };
+            let want_ignore = !inside;
+            if MINI_LAST_IGNORE.swap(want_ignore, Ordering::SeqCst) != want_ignore {
+                let _ = win.set_ignore_cursor_events(want_ignore);
+                log::info!("[mini-bar] 命中测试切换: ignore={want_ignore}");
+            }
+        }
+        MINI_POLLER_RUNNING.store(false, Ordering::SeqCst);
+    });
+}
+
 #[tauri::command]
 pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String> {
     // macOS 不提供速览条：tao 未实现 skip_taskbar，透明窗口会进 Mission Control /
@@ -2981,6 +3043,10 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
             let py = ((sh - 340.0) / 2.0).max(8.0);
             let _ = win.set_position(tauri::LogicalPosition::new(px, py));
         }
+        // 初始整窗穿透：透明容器不拦截下层窗口点击；光标进入条身后由轮询恢复交互
+        let _ = win.set_ignore_cursor_events(true);
     }
+    // 启动光标轮询，按需在「穿透 ↔ 可交互」间切换
+    spawn_mini_hit_test_poller(app);
     Ok(())
 }

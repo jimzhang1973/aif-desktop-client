@@ -149,11 +149,14 @@ function showCard(): void {
   void renderCard();
   card.classList.add("show");
   card.setAttribute("aria-hidden", "false");
+  // 通知 Rust：卡片可见 → 命中测试扩大到整窗（见 commands.rs 轮询线程）
+  void invoke("set_mini_card_visible", { visible: true });
 }
 function hideCard(): void {
   hideTimer = window.setTimeout(() => {
     card.classList.remove("show");
     card.setAttribute("aria-hidden", "true");
+    void invoke("set_mini_card_visible", { visible: false });
   }, 250);
 }
 /** 点击交互时收起预览卡：立即收起（不等 250ms），并挂起到下次进入 */
@@ -161,6 +164,7 @@ function dismissCard(): void {
   window.clearTimeout(hideTimer);
   card.classList.remove("show");
   card.setAttribute("aria-hidden", "true");
+  void invoke("set_mini_card_visible", { visible: false });
   suppressCard = true;
 }
 const miniEl = document.getElementById("mini")!;

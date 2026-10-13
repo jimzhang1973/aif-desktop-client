@@ -1,0 +1,91 @@
+# 跨平台打包矩阵：Linux x64 / Linux ARM64 / macOS universal（Intel+Apple Silicon 合并包）
+#
+# 用法：
+#   1) 手动触发：GitHub 仓库页 → Actions → Release Build → Run workflow
+#   2) 打标签自动触发：git tag v5.0.159 && git push origin v5.0.159
+# 产物：每次运行页面的 Artifacts 区下载（linux-x64 / linux-arm64 / mac-universal）；
+#       打 tag 触发时额外创建 GitHub Release 并附上安装包。
+#
+# 版本号：beforeBuildCommand 里的 scripts/sync-version.mjs 在 CI 同样生效——
+# 安装包名版本 = Cargo.toml major.minor + .build-id（已随仓库提交，与本地计数连续）。
+#
+# 私有仓库注意（2026-10 计费规则）：
+#   - 公开仓库：全部 runner 免费；
+#   - 私有仓库：ubuntu-24.04-arm 为付费 larger runner；macos runner 按 10 倍分钟计费
+#     （免费额度 2000 分钟/月 ≈ 13 次 universal 构建）。若不满足，见 MEMORY.md
+#     打包规范的替代路径（自托管 runner / 公司服务器 / 本机 WSL2）。
+name: Release Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+          - os: macos-latest
+            target: universal-apple-darwin
+            name: mac-universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Rust 编译缓存：依赖不变时增量，二次构建提速明显
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: 安装 Linux 依赖（webkit2gtk-4.1 等，Tauri 2 要求）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 打包（beforeBuildCommand 自动跑 sync-version + vite build）
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: 收集安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+
+      # 打 tag 触发时：把三平台产物汇入同一 GitHub Release
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/*/release/bundle/deb/*.deb
+            src-tauri/target/*/release/bundle/rpm/*.rpm
+            src-tauri/target/*/release/bundle/appimage/*.AppImage
+            src-tauri/target/*/release/bundle/dmg/*.dmg

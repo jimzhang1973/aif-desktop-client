@@ -1,0 +1,15 @@
+# Node / 前端
+node_modules/
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# 运行期本地数据（数据库、日志）
+*.db
+*.log
+
+# 系统图标缓存
+.DS_Store
+.workbuddy_notes.tmp

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "巨鹏软件客户端",
+  "version": "5.1.231",
+  "identifier": "cn.aif.desktopclient",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "node scripts/sync-version.mjs && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "业务小助手",
+        "width": 432,
+        "height": 640,
+        "minWidth": 360,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "decorations": false,
+        "skipTaskbar": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' https://51yunwei.com.cn https://*.51yunwei.com.cn data:; connect-src 'self' https://51yunwei.com.cn https://*.51yunwei.com.cn http://127.0.0.1 https://127.0.0.1; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "wix": {
+        "language": "zh-CN"
+      },
+      "nsis": {
+        "displayLanguageSelector": false,
+        "languages": ["SimpChinese"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "dmg": {}
+    },
+    "category": "Utility",
+    "publisher": "JPSOFT Co. 2026"
+  },
+  "plugins": {}
+}

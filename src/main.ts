@@ -782,6 +782,40 @@ function persistUnread() {
   localStorage.setItem("aif_unread_msg_ids", JSON.stringify([...unreadIds].slice(-300)));
 }
 
+/// 单条未读 → 已读：内存集合、localStorage、底部导航角标、页面行内未读样式四处同步。
+/// 所有「点击某条未读消息」的路径（消息列表点击 / 系统通知跳转 / 弹窗跳转）统一走这里，
+/// 保证角标随点击动作即时增减。返回是否确有未读被消除。
+function markOneRead(id: string): boolean {
+  if (!id || !unreadIds.has(id)) return false;
+  unreadIds.delete(id);
+  persistUnread();
+  setTabBadge("messages", unreadIds.size);
+  // 行内样式同步：列表可能处于任一渲染态（当前页 / 本地回退），全量清理兜底
+  document.querySelectorAll(`.msg-row[data-id="${CSS.escape(id)}"]`).forEach((row) => {
+    row.classList.remove("unread");
+    row.querySelector(".msg-unread-dot")?.remove();
+  });
+  return true;
+}
+
+/// 按消息 URL 反查并转已读（系统通知 / 弹窗点击跳转路径，此时手里只有 URL 没有 id）。
+/// 先查当前已加载的历史分页，未命中再查本地轮询存档。
+async function markReadByUrl(url: string) {
+  if (!url) return;
+  const hit = msgState.items.find((m) => m.url === url);
+  if (hit) {
+    markOneRead(hit.id);
+    return;
+  }
+  try {
+    const local = await api.getMessages();
+    const m = local.find((x) => x.url === url);
+    if (m) markOneRead(m.id);
+  } catch {
+    /* 本地存档不可用：忽略，未读状态保持 */
+  }
+}
+
 function setTabBadge(tab: "messages" | "todos", n: number) {
   const el = document.getElementById(`badge-${tab}`);
   if (!el) return;
@@ -1173,7 +1207,7 @@ async function renderLocalMessages(list: HTMLElement) {
     hit
       .map(
         (m) => `
-          <div class="list-item" data-url="${esc(m.url)}">
+          <div class="list-item" data-id="${esc(m.id)}" data-url="${esc(m.url)}">
             <div class="ico msg-b">✉</div>
             <div class="li-main">
               <div class="li-title">${esc(m.title)}</div>
@@ -1189,15 +1223,9 @@ async function renderLocalMessages(list: HTMLElement) {
 function bindMessageItems(root: HTMLElement) {
   root.querySelectorAll("[data-url]").forEach((item) =>
     item.addEventListener("click", () => {
-      // 点击未读消息 → 该条立即转已读：本地集合、角标、行内未读样式三处同步
+      // 点击未读消息 → 该条立即转已读（集合/角标/行内样式统一在 markOneRead 内同步）
       const id = (item as HTMLElement).dataset.id;
-      if (id && unreadIds.has(id)) {
-        unreadIds.delete(id);
-        persistUnread();
-        setTabBadge("messages", unreadIds.size);
-        item.classList.remove("unread");
-        item.querySelector(".msg-unread-dot")?.remove();
-      }
+      markOneRead(id || "");
       const url = (item as HTMLElement).dataset.url;
       if (url) void openUrl(url);
     }),
@@ -2035,6 +2063,16 @@ function renderProfile(content: HTMLElement) {
     }),
   );
   document.getElementById("set-save")!.addEventListener("click", saveSettings);
+  // 「多入口切换」拨动即生效：全屏模式顶栏立刻出现/隐藏「入口信息 + 切换入口」，
+  // 并立即持久化（不等「保存设置」），避免开关状态与顶栏实际表现不一致
+  document.getElementById("set-multi-entry")!.addEventListener("change", (e) => {
+    if (!settings) return;
+    settings.multi_entry = (e.target as HTMLInputElement).checked;
+    void updateEntryLabel(); // 内部联动 updateEntryBtn 控制顶栏显隐
+    void api.saveSettings(settings).catch(() =>
+      toast("多入口切换状态保存失败，请点击「保存设置」重试"),
+    );
+  });
   bindHotkeyCapture();
   // 清除快捷键：立即注销系统热键并持久化（空串=注销）
   document.getElementById("hotkey-clear")!.addEventListener("click", async () => {
@@ -2601,8 +2639,10 @@ async function main() {
     toast("新消息：" + m.title);
   });
   // 系统通知点击跳转：Rust 按通知标题反查消息 URL 后置前主窗口并 emit；
-  // 走 openUrl（全屏开 tab / 默认开独立 webview 窗口），文档空间消息自带 articleShowMessageBox=true
+  // 走 openUrl（全屏开 tab / 默认开独立 webview 窗口），文档空间消息自带 articleShowMessageBox=true。
+  // 点击即视为已读：按 URL 反查消息并消除未读角标（与消息列表点击行为一致）
   on<string>("open-message-url", (url) => {
+    void markReadByUrl(url);
     void openUrl(url);
   });
   on("open-settings", () => {

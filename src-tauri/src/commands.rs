@@ -2923,7 +2923,7 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
             let scale = m.scale_factor();
             let w = m.size().width as f64 / scale;
             let h = m.size().height as f64 / scale;
-            (w - 74.0, ((h - 330.0) / 2.0).max(8.0))
+            (w - 58.0, ((h - 272.0) / 2.0).max(8.0))
         }
         _ => (0.0, 0.0),
     };
@@ -2937,7 +2937,7 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         .shadow(false)
         // 透明窗口：CSS 圆角（14px）外侧不再露白/露黑，胶囊外观靠 mini.css 实现
         .transparent(true)
-        .inner_size(64.0, 330.0)
+        .inner_size(50.0, 272.0)
         .position(x, y)
         .build()
         .map_err(|e| format!("创建速览条失败: {e}"))?;

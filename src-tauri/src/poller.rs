@@ -91,8 +91,13 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
         )
     };
 
-    // 1) 拉消息 / 2) 拉待办（结果先存下，成功标志在 move 前取出）
-    let msg_res = fetch_messages(&state, &base, &root, &api_messages, &session).await;
+    // 1) 保活：keepAlive 照常打一拍维持会话在线状态（响应忽略）。
+    //    消息通知不再依赖它的 m 队列 —— 该队列是消费型的，客户端 webview 内嵌的
+    //    B/S 页面（多标签页/会话窗/浏览器里开着的 B/S）跑着同一会话自己的心跳，
+    //    会把待推送消息抢先消费掉，导致轮询拿到空 m 而漏提醒。
+    keepalive_ping(&state, &base, &api_messages, &session).await;
+    // 2) 通知源：历史消息接口第一页（与消息页同源、按页返回不消费，无被抢问题）
+    let msg_res = fetch_history_messages(&state, &base, &root, &session).await;
     let todo_res = fetch_todos(&state, &base, &root, &api_todos, &session).await;
     let msg_ok = msg_res.is_ok();
     let todo_ok = todo_res.is_ok();
@@ -101,15 +106,23 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
         let mut new_list: Vec<NewMessage> = Vec::new();
         {
             let conn = state.db.lock().unwrap();
+            // 通知源切换基线：首次用历史接口拉取时，已有历史消息只入库不打扰
+            //（否则升级后第一轮会把最近几十条历史全部弹一遍）
+            let baseline = db::kv_get(&conn, "notify_source_v2").is_none();
             for m in new {
                 if let Ok(true) = db::insert_message(&conn, &m.id, &m.title, &m.body, &m.url) {
-                    new_list.push(NewMessage {
-                        id: m.id,
-                        title: m.title,
-                        body: m.body,
-                        url: m.url,
-                    });
+                    if !baseline {
+                        new_list.push(NewMessage {
+                            id: m.id,
+                            title: m.title,
+                            body: m.body,
+                            url: m.url,
+                        });
+                    }
                 }
+            }
+            if baseline {
+                let _ = db::kv_set(&conn, "notify_source_v2", "1");
             }
         }
         for m in &new_list {
@@ -186,23 +199,88 @@ async fn maybe_relogin(state: &Arc<AppState>, app: &AppHandle) {
     }
 }
 
-async fn fetch_messages(
+/// 会话保活：照常打 keepAlive 心跳（维持服务端在线状态），响应忽略。
+/// 消息通知已改走历史接口（fetch_history_messages），不再依赖心跳携带的
+/// m 队列 —— 该队列消费型，会被内嵌 B/S 页面自身的心跳抢先消费导致漏提醒。
+async fn keepalive_ping(state: &Arc<AppState>, base: &str, path: &str, session: &str) {
+    let url = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
+    let _ = state.client.get(&url).header("Cookie", session).send().await;
+}
+
+/// 通知源：B/S 历史消息接口（POST {base}/{root}/getMessageList，curl 实证，
+/// 字段说明见 commands.rs get_message_history）。取 system/personal 两来源第一页
+/// （最新在前），去重交给 messages 表主键。
+/// 每条字段：t=来源系统名, c=内容, mc=模块码, s=system|personal,
+///   st=时间"yyyy-MM-dd HH:mm:ss", pcUrl=PC 跳转链接, si.userName=发送人
+async fn fetch_history_messages(
     state: &Arc<AppState>,
     base: &str,
     root: &str,
-    path: &str,
     session: &str,
 ) -> anyhow::Result<Vec<RawItem>> {
-    let url = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
-    let resp = state
-        .client
-        .get(&url)
-        .header("Cookie", session)
-        .send()
-        .await?
-        .error_for_status()?;
-    let json: serde_json::Value = resp.json().await?;
-    Ok(extract_items(&json, base, root))
+    let url = format!("{}/{}/getMessageList", base.trim_end_matches('/'), root);
+    let mut items = Vec::new();
+    for source in ["system", "personal"] {
+        let resp = state
+            .client
+            .post(&url)
+            .header("Cookie", session)
+            .form(&[
+                ("source", source),
+                ("key", ""),
+                ("pageIndex", "0"),
+                ("pageSize", "20"),
+            ])
+            .send()
+            .await?
+            .error_for_status()?;
+        let json: serde_json::Value = resp.json().await?;
+        let arr = json
+            .get("data")
+            .and_then(|d| d.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for o in &arr {
+            let g = |k: &str| {
+                o.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+            };
+            let s = g("s");
+            let st = g("st");
+            let content = g("c");
+            let sender = o
+                .get("si")
+                .and_then(|si| si.get("userName"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            if content.is_empty() {
+                continue;
+            }
+            // 稳定去重键：来源|发送时间(秒)|内容|发送人 —— 不用服务端 id 字段
+            //（其字段名/取值不稳定，见 commands.rs 注释），内容键跨轮询恒定
+            let id = format!(
+                "{:016x}",
+                fnv1a(&format!("hist|{}|{}|{}|{}", s, st, content, sender))
+            );
+            // 标题：来源系统名 → 发送人 → 「系统消息/个人消息：内容前 20 字」
+            let mut title = g("t");
+            if title.is_empty() {
+                title = sender.clone();
+            }
+            if title.is_empty() {
+                let label = if s == "personal" { "个人消息" } else { "系统消息" };
+                title = format!(
+                    "{}：{}",
+                    label,
+                    content.chars().take(20).collect::<String>()
+                );
+            }
+            let url =
+                append_article_param(&g("mc"), absolute_url(base, root, &g("pcUrl")));
+            items.push(RawItem { id, title, body: content, url });
+        }
+    }
+    Ok(items)
 }
 
 async fn fetch_todos(
@@ -242,37 +320,6 @@ struct RawItem {
     title: String,
     body: String,
     url: String,
-}
-
-/// 解析 keepAlive 心跳响应：{"c":在线数,"s":状态,"m":[消息数组]}
-/// 每条消息：{"s":"system"|"personal","st":发送时间ms,"c":内容,"mc":模块码,"bi":业务id,"pcUrl":跳转链接}
-fn extract_items(v: &serde_json::Value, base: &str, root: &str) -> Vec<RawItem> {
-    let arr = v.get("m").and_then(|m| m.as_array()).cloned().unwrap_or_default();
-    arr.iter()
-        .map(|o| {
-            let kind = pick(o, &["s"]);
-            let content = pick(o, &["c"]);
-            let kind_label = match kind.as_str() {
-                "system" => "系统消息",
-                "personal" => "个人消息",
-                _ => "消息",
-            };
-            // 服务端无显式消息 id：用 类型+时间+内容+业务id 哈希生成稳定去重键
-            let id = format!(
-                "{:016x}",
-                fnv1a(&format!("{}|{}|{}|{}", kind, pick(o, &["st"]), content, pick(o, &["bi"])))
-            );
-            let title = if content.chars().count() > 24 {
-                format!("{}：{}…", kind_label, content.chars().take(24).collect::<String>())
-            } else {
-                format!("{}：{}", kind_label, content)
-            };
-            let raw_url = pick(o, &["pcUrl"]);
-            let url = append_article_param(&pick(o, &["mc"]), absolute_url(base, root, &raw_url));
-            RawItem { id, title, body: content, url }
-        })
-        .filter(|i| !i.body.is_empty())
-        .collect()
 }
 
 /// 解析「我收到的事项」：[{"bid":业务id,"bname":事项名,"todo":待办数,"todo_pc_url":跳转,...}]

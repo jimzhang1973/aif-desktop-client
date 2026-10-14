@@ -533,6 +533,18 @@ pub fn disk_download_files(
                 }
             }
         }
+        // 批量下载完成：emit 完成事件，前端据此把任务状态从「进行中」置为 完成/部分失败
+        let _ = app.emit(
+            "disk-progress",
+            DiskProgress {
+                kind: "download".into(),
+                file: "全部完成".into(),
+                done: total,
+                total,
+                ok: true,
+                msg: String::new(),
+            },
+        );
     });
     Ok(())
 }

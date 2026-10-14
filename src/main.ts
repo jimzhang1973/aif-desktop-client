@@ -1129,7 +1129,10 @@ function diskTransferRender(): void {
       const arrow = t.kind === "download" ? "↓" : "↑";
       const target = t.kind === "download" ? `下载到 ${t.target}` : `上传到 ${t.target}`;
       const itemsHtml = t.items
-        .map((i) => `<li class="${i.ok ? "ok" : "bad"}">${esc(i.name)}${i.msg && !i.ok ? `：<span class="tf-msg">${esc(i.msg)}</span>` : ""}</li>`)
+        .map(
+          (i) =>
+            `<li class="${i.ok ? "ok" : "bad"}"><span class="tf-name">${esc(i.name)}</span>${i.msg && !i.ok ? `<span class="tf-msg">：${esc(i.msg)}</span>` : ""}<span class="tf-conc" title="${i.ok ? "成功" : "失败"}">${i.ok ? "✓" : "✗"}</span></li>`,
+        )
         .join("");
       const retryBtn =
         t.kind === "download" && t.meta.raw && failed.length
@@ -1242,7 +1245,7 @@ async function renderDisk(content: HTMLElement) {
         <select id="disk-space" class="disk-select" title="选择空间"></select>
         <span class="disk-hint" id="disk-hint">点目录名展开/收起；勾选目录 = 级联选中其下全部文件</span>
         <span class="tb-spacer"></span>
-        <button class="disk-btn ghost" id="disk-transfer" title="传输管理器">传输<span class="badge" id="disk-transfer-badge"></span></button>
+        <button class="disk-btn ghost" id="disk-transfer" title="日志">日志<span class="badge" id="disk-transfer-badge"></span></button>
         <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>↑ 上传</button>
         <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>↓ 下载</button>
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
@@ -1250,7 +1253,7 @@ async function renderDisk(content: HTMLElement) {
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
       <div class="disk-log" id="disk-log"></div>
       <div class="disk-drawer" id="disk-drawer">
-        <div class="tf-header">传输管理器<button class="tf-close" id="disk-drawer-close" title="关闭">×</button></div>
+        <div class="tf-header">日志<button class="tf-close" id="disk-drawer-close" title="关闭">×</button></div>
         <div class="tf-list" id="disk-transfer-list"></div>
       </div>
     </div>`;
@@ -1278,15 +1281,22 @@ async function renderDisk(content: HTMLElement) {
   sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
-  // 传输管理器抽屉
-  document.getElementById("disk-transfer")!.addEventListener("click", () => {
-    const dw = document.getElementById("disk-drawer")!;
-    dw.classList.toggle("open");
-    if (dw.classList.contains("open")) diskTransferRender();
+  // 传输/日志管理器抽屉
+  const drawer = document.getElementById("disk-drawer")!;
+  document.getElementById("disk-transfer")!.addEventListener("click", (e) => {
+    e.stopPropagation(); // 不触发页面点击关闭，避免与本按钮的开关冲突
+    drawer.classList.toggle("open");
+    if (drawer.classList.contains("open")) diskTransferRender();
   });
   document.getElementById("disk-drawer-close")!.addEventListener("click", () =>
-    document.getElementById("disk-drawer")!.classList.remove("open"),
+    drawer.classList.remove("open"),
   );
+  // 点击主窗体页面（抽屉外任意区域）自动关闭抽屉
+  content.addEventListener("click", (e) => {
+    if (drawer.classList.contains("open") && !drawer.contains(e.target as Node)) {
+      drawer.classList.remove("open");
+    }
+  });
   diskTransferBadge();
   diskTransferRender();
   document.getElementById("disk-up")!.addEventListener("click", () => {

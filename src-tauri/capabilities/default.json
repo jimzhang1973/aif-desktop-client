@@ -4,7 +4,7 @@
   "description": "AIF 桌面客户端默认权限",
   "windows": ["main", "login", "conversation", "*"],
   "remote": {
-    "urls": ["https://51yunwei.com.cn/*", "http://51yunwei.com.cn/*"]
+    "urls": ["*://*"]
   },
   "permissions": [
     "core:default",

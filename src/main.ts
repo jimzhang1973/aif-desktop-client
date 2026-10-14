@@ -1276,13 +1276,15 @@ async function diskEnsureSubtree(root: DiskNode): Promise<void> {
 }
 
 /** 渲染目录树：目录 + 最末级文件叶子，节点带 checkbox */
-/** 在线文档类型 → 展示后缀（B/S 文章本身无后缀，按官方类型枚举映射虚拟扩展名） */
+/** 在线文档类型 → 展示/下载后缀（B/S 文章本身无后缀，按官方类型枚举映射虚拟扩展名）。
+ *  富文本(RICHTEXT)导出为 DOCX、在线 Excel(EXCEL/COLLEXCEL)导出为 XLSX、MARKDOWN 保留 .md 原文、
+ *  DOC 导出为 .docx —— 与后端 disk_download_files 的 transfer/download.htm exportType 矩阵对齐。 */
 const DISK_SUBTYPE_EXT: Record<string, string> = {
   DOC: "docx",
   MARKDOWN: "md",
   EXCEL: "xlsx",
   COLLEXCEL: "xlsx",
-  RICHTEXT: "txt",
+  RICHTEXT: "docx",
 };
 
 /** 文件行展示名与后缀：FILE 用真实 subFileType；在线文档用类型映射的虚拟后缀 */
@@ -1459,7 +1461,7 @@ function diskUpdateButtons(): void {
   }
   if (dl) {
     dl.disabled = diskSt.checked.size === 0;
-    dl.title = "下载勾选的文件（附件直下；DOC→docx、MD→md 原文；富文本/Excel 请在详情页下载）";
+    dl.title = "下载勾选的文件（附件直下原始文件；在线文档 DOC/RICHTEXT→docx、MD→md 原文、Excel→xlsx）";
   }
   const hint = document.getElementById("disk-hint");
   if (hint) {
@@ -1473,13 +1475,14 @@ function diskUpdateButtons(): void {
 }
 
 /** 汇总勾选 → 下载任务列表。
- *  可下载：FILE 附件（原始文件）+ 在线文档 DOC→.docx / MARKDOWN→.md 原文（B/S 导出接口）；
- *  富文本/在线 Excel 暂不支持（详情页下载）。勾选目录展开为其子树可下载文件（unchecked 剪枝），
+ *  可下载：FILE 附件（原始文件）+ 在线文档 DOC→.docx / MARKDOWN→.md 原文 /
+ *  RICHTEXT→.docx / EXCEL·COLLEXCEL→.xlsx（均经 B/S 官方 transfer/download.htm 导出接口）。
+ *  勾选目录展开为其子树可下载文件（unchecked 剪枝），
  *  且仅当文件的最远勾选祖先就是该目录时归属它（避免与子目录重复/冲突） */
 function diskCheckedDlItems(): DiskDlItem[] {
   const out: DiskDlItem[] = [];
   const seen = new Set<string>();
-  const dlType = new Set(["FILE", "DOC", "MARKDOWN"]);
+  const dlType = new Set(["FILE", "DOC", "MARKDOWN", "RICHTEXT", "EXCEL", "COLLEXCEL"]);
   const add = (n: DiskNode) => {
     if (n.nodeType !== "article" || !dlType.has(n.subtype) || seen.has(n.id)) return;
     seen.add(n.id);

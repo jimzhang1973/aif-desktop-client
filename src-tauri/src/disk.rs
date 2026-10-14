@@ -462,8 +462,16 @@ pub fn disk_download_files(
                 }
                 format!("{base}/{root}/nonlogin/{meta}&mode=download")
             } else {
-                // 在线文档导出：DOC→DOCX；MARKDOWN→MD 保留原文（实测 exportType=MD 返回 UTF-8 纯文本）
-                let export_type = if item.subtype == "MARKDOWN" { "MD" } else { "DOCX" };
+                // 在线文档导出（B/S 官方 transfer/download.htm 链路，2026-10-14 实测矩阵）：
+                // - MARKDOWN → MD（保留 UTF-8 原文，exportType=MD 返回纯文本）
+                // - DOC / RICHTEXT → DOCX（富文本 DOCX 导出可用）
+                // - EXCEL / COLLEXCEL → EXCEL（返回 PK zip=原 xlsx，响应后缀误为 .EXCEL，
+                //   本地已用 .xlsx 命名，见 diskFileDisplay / DiskDlItem.name）
+                let export_type = match item.subtype.as_str() {
+                    "MARKDOWN" => "MD",
+                    "EXCEL" | "COLLEXCEL" => "EXCEL",
+                    _ => "DOCX",
+                };
                 format!(
                     "{base}/{root}/nonlogin/knowledge/transfer/download.htm?id={}&type=0&exportType={export_type}",
                     item.article_id

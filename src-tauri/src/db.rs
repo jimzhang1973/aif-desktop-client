@@ -18,6 +18,8 @@ pub struct TodoRow {
     pub title: String,
     pub url: String,
     pub done: bool,
+    /// 该事项挂着的待办条目数（服务端 "todo" 字段；角标按其合计，与主窗/B/S 口径一致）
+    pub count: i64,
     pub updated_at: i64,
 }
 
@@ -52,6 +54,8 @@ pub fn init(path: &std::path::Path) -> anyhow::Result<Connection> {
         );
         "#,
     )?;
+    // 迁移：老库 todos 表补 count 列（列已存在时报错忽略）
+    let _ = conn.execute("ALTER TABLE todos ADD COLUMN count INTEGER DEFAULT 1", []);
     Ok(conn)
 }
 
@@ -108,8 +112,8 @@ pub fn upsert_todos(conn: &mut Connection, todos: &[TodoRow]) -> anyhow::Result<
     tx.execute("DELETE FROM todos", [])?;
     for t in todos {
         tx.execute(
-            "INSERT INTO todos (id,title,url,done,updated_at) VALUES (?,?,?,?,?)",
-            (t.id.as_str(), t.title.as_str(), t.url.as_str(), t.done as i64, t.updated_at),
+            "INSERT INTO todos (id,title,url,done,count,updated_at) VALUES (?,?,?,?,?,?)",
+            (t.id.as_str(), t.title.as_str(), t.url.as_str(), t.done as i64, t.count, t.updated_at),
         )?;
     }
     tx.commit()?;
@@ -118,14 +122,15 @@ pub fn upsert_todos(conn: &mut Connection, todos: &[TodoRow]) -> anyhow::Result<
 
 pub fn list_todos(conn: &Connection) -> anyhow::Result<Vec<TodoRow>> {
     let mut stmt =
-        conn.prepare("SELECT id,title,url,done,updated_at FROM todos ORDER BY updated_at DESC")?;
+        conn.prepare("SELECT id,title,url,done,count,updated_at FROM todos ORDER BY updated_at DESC")?;
     let rows = stmt.query_map([], |r| {
         Ok(TodoRow {
             id: r.get(0)?,
             title: r.get(1)?,
             url: r.get(2)?,
             done: r.get::<_, i64>(3)? != 0,
-            updated_at: r.get(4)?,
+            count: r.get(4)?,
+            updated_at: r.get(5)?,
         })
     })?;
     Ok(rows.flatten().collect())
@@ -187,7 +192,7 @@ pub fn detect_overdue_todos(
 /// 托盘待办速览：未办结事项前 n 条（按最近更新倒序）
 pub fn list_pending_todos_top(conn: &Connection, n: usize) -> anyhow::Result<Vec<TodoRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id,title,url,done,updated_at FROM todos WHERE done=0 ORDER BY updated_at DESC LIMIT ?",
+        "SELECT id,title,url,done,count,updated_at FROM todos WHERE done=0 ORDER BY updated_at DESC LIMIT ?",
     )?;
     let rows = stmt.query_map([n as i64], |r| {
         Ok(TodoRow {
@@ -195,7 +200,8 @@ pub fn list_pending_todos_top(conn: &Connection, n: usize) -> anyhow::Result<Vec
             title: r.get(1)?,
             url: r.get(2)?,
             done: r.get::<_, i64>(3)? != 0,
-            updated_at: r.get(4)?,
+            count: r.get(4)?,
+            updated_at: r.get(5)?,
         })
     })?;
     Ok(rows.flatten().collect())

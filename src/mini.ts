@@ -12,6 +12,8 @@ interface TodoRow {
   title: string;
   url: string;
   done: boolean;
+  /** 该事项挂着的待办条目数（角标按其合计，与主窗/B/S 口径一致） */
+  count: number;
 }
 
 interface MessageRow {
@@ -130,7 +132,8 @@ async function refresh() {
 async function todoCount(): Promise<number> {
   try {
     const rows = await invoke<TodoRow[]>("get_todos");
-    return rows.filter((t) => !t.done).length;
+    // 与主窗角标同口径：各事项待办条目数合计（count 兜底 1 兼容旧快照）
+    return rows.filter((t) => !t.done).reduce((s, t) => s + (t.count || 1), 0);
   } catch {
     return 0;
   }
@@ -211,13 +214,14 @@ async function renderCard(): Promise<void> {
   try {
     const rows = (await invoke<TodoRow[]>("get_todos")).filter((t) => !t.done);
     const undone = rows.slice(0, 5);
-    cTodoN.textContent = String(rows.length);
-    cTodoN.classList.toggle("hot", rows.length > 0);
+    const total = rows.reduce((s, t) => s + (t.count || 1), 0);
+    cTodoN.textContent = String(total);
+    cTodoN.classList.toggle("hot", total > 0);
     cTodos.innerHTML = undone.length
       ? undone
           .map(
             (t) =>
-              `<div class="c-row" data-url="${esc(t.url)}"><span class="r-ico i-todo">${ICON_TODO}</span><div class="r-title">${esc(trim(t.title, 22))}</div></div>`,
+              `<div class="c-row" data-url="${esc(t.url)}"><span class="r-ico i-todo">${ICON_TODO}</span><div class="r-title">${esc(trim(t.title, 22))}</div>${(t.count || 1) > 1 ? `<span class="r-count">×${t.count}</span>` : ""}</div>`,
           )
           .join("")
       : `<div class="c-empty">暂无待办 🎉</div>`;

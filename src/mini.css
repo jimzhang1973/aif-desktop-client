@@ -121,6 +121,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   font-size: 11px; color: var(--text-3); margin-top: 1px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* 待办行「挂 N 条待办」小徽标（count>1 时显示在行尾） */
+.c-row .r-count {
+  flex: none; padding: 1px 5px;
+  font-size: 10px; font-weight: 600; line-height: 1.4;
+  color: #b45309; background: #fef3c7; border-radius: 8px;
+}
 /* ---------------- 助手：悬停「助手」按钮 → 卡片整体切换为可用智能体列表 ---------------- */
 /* 默认隐藏智能体节；#card.agents-only 时只显示智能体节 */
 #c-agents-sec { display: none; }

@@ -396,6 +396,7 @@ fn extract_todos(v: &serde_json::Value, base: &str, root: &str) -> Vec<db::TodoR
                 title: pick(o, &["bname"]),
                 url,
                 done: todo_count == 0,
+                count: todo_count.max(1), // 服务端 todo 字段；兜底至少 1
                 updated_at: now_secs(),
             }
         })

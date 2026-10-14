@@ -46,8 +46,9 @@
         <span class="m-ico m-quick-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.8 13.2h6L10.9 22l8.3-11.2h-6z"/></svg></span>
         <span class="m-count" id="m-quick-n">0</span>
       </button>
-      <!-- 应用（仅 AIF 运维产品显示，DCP 隐藏；由 mini.ts 按 get_settings().ops_product 控制） -->
-      <div class="m-sep"></div>
+      <!-- 应用（仅 AIF 运维产品显示，DCP 隐藏；由 mini.ts 按 get_settings().ops_product 控制，
+           连同前导分隔线一起显隐，避免双分隔线相邻） -->
+      <div class="m-sep" id="m-sep-ops" hidden></div>
       <button class="m-btn" id="m-ops" title="应用：点击打开应用中心" hidden>
         <span class="m-ico m-ops-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></span>
         <span class="m-count" id="m-ops-n"></span>

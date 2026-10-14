@@ -81,7 +81,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   border-radius: 8px; cursor: pointer;
 }
 .c-foot:hover { background: rgba(59, 109, 240, 0.12); }
-.m-sep { flex: none; width: 20px; height: 1px; background: #9aa3b2; }
+/* 分隔线统一虚线样式（沿条身横向） */
+.m-sep { flex: none; width: 20px; height: 0; border-top: 1px dashed #9aa3b2; }
+.m-sep[hidden] { display: none !important; }
 .m-btn {
   flex: none; width: 32px; height: 44px; border: none; border-radius: 9px;
   background: transparent; cursor: pointer; display: flex; flex-direction: column;

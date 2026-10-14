@@ -59,6 +59,7 @@ const cMsgs = document.getElementById("c-msgs")!;
 const cTodoN = document.getElementById("c-todo-n")!;
 const cMsgN = document.getElementById("c-msg-n")!;
 const assistBtn = document.getElementById("m-assist")!;
+const sepOps = document.getElementById("m-sep-ops")!;
 const cAgents = document.getElementById("c-agents")!;
 const cAgentsN = document.getElementById("c-agents-n")!;
 
@@ -140,6 +141,7 @@ async function todoCount(): Promise<number> {
 function onProductSwitched(): void {
   opsProduct = null;
   opsBtn.hidden = true;
+  sepOps.hidden = true; // 应用按钮隐藏时连前导分隔线一起藏，避免双线相邻
   cOpsSec.hidden = true;
   opsN.textContent = "";
   cOps.innerHTML = "";
@@ -159,6 +161,7 @@ async function detectOpsProduct(): Promise<void> {
     opsProduct = false;
   }
   opsBtn.hidden = !opsProduct;
+  sepOps.hidden = !opsProduct;
   cOpsSec.hidden = !opsProduct;
 }
 
@@ -290,11 +293,16 @@ let hideTimer = 0;
 let suppressCard = false;
 // 智能体视图：悬停「助手」按钮时卡片整体切换为可用智能体列表
 let agentMode = false;
+/** 退出智能体视图：卡片恢复常规（待办/消息）内容 */
+function resetAgentView(): void {
+  if (!agentMode) return;
+  agentMode = false;
+  card.classList.remove("agents-only");
+}
 function showCard(): void {
   window.clearTimeout(hideTimer);
   suppressCard = false; // 重新进入速览条：解除挂起，恢复正常悬停显隐
-  agentMode = false; // 回到常规视图（智能体视图仅在悬停「助手」按钮时保持）
-  card.classList.remove("agents-only");
+  resetAgentView(); // 回到常规视图（智能体视图仅在悬停「助手」按钮时进入）
   void renderCard();
   card.classList.add("show");
   card.setAttribute("aria-hidden", "false");
@@ -305,6 +313,7 @@ function hideCard(): void {
   hideTimer = window.setTimeout(() => {
     card.classList.remove("show");
     card.setAttribute("aria-hidden", "true");
+    resetAgentView(); // 卡片收起后下次展开恢复常规内容
     void invoke("set_mini_card_visible", { visible: false });
   }, 250);
 }
@@ -313,6 +322,7 @@ function dismissCard(): void {
   window.clearTimeout(hideTimer);
   card.classList.remove("show");
   card.setAttribute("aria-hidden", "true");
+  resetAgentView();
   void invoke("set_mini_card_visible", { visible: false });
   suppressCard = true;
 }
@@ -371,7 +381,9 @@ assistBtn.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "assistant");
 });
-// 悬停「助手」按钮：浮窗整体切换为可用智能体列表；移出恢复常规视图
+// 悬停「助手」按钮：浮窗整体切换为可用智能体列表。
+// 不在按钮 mouseleave 里复位——鼠标移去卡片选智能体时按钮 mouseleave 会先触发，
+// 卡片会被错误切回常规视图；改为「卡片收起」或「移回条身其他按钮」时才退出智能体视图。
 assistBtn.addEventListener("mouseenter", () => {
   if (suppressCard) return;
   agentMode = true;
@@ -383,11 +395,13 @@ assistBtn.addEventListener("mouseenter", () => {
   }
   void renderCard();
 });
-assistBtn.addEventListener("mouseleave", () => {
+// 条身内部移动：从「助手」按钮移到其他按钮/空白处 → 退出智能体视图恢复常规
+// （卡片有自己的 mouseenter 保活，鼠标在卡片上时不会触发本监听）
+miniEl.addEventListener("mouseover", (e) => {
   if (!agentMode) return;
-  agentMode = false;
-  card.classList.remove("agents-only");
-  if (card.classList.contains("show")) void renderCard(); // 恢复常规内容
+  if ((e.target as HTMLElement).closest("#m-assist")) return;
+  resetAgentView();
+  if (card.classList.contains("show")) void renderCard();
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
 document.getElementById("m-close")!.addEventListener("click", () => {

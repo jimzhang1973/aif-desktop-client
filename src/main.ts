@@ -1249,7 +1249,7 @@ async function renderDisk(content: HTMLElement) {
     <div class="disk-wrap">
       <div class="disk-bar">
         <select id="disk-space" class="disk-select" title="选择空间"></select>
-        <span class="disk-hint" id="disk-hint">点目录名展开/收起；勾选目录 = 级联选中其下全部文件</span>
+        <span class="disk-hint" id="disk-hint"></span>
         <span class="tb-spacer"></span>
         <button class="disk-btn ghost" id="disk-transfer" title="日志">日志<span class="badge" id="disk-transfer-badge"></span></button>
         <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>上传</button>
@@ -1677,7 +1677,7 @@ function diskUpdateButtons(): void {
       ? `上传目标：「${dir.name}」｜已选 ${nFiles} 个文件`
       : nFiles
         ? `已选 ${nFiles} 个文件`
-        : "点目录名展开/收起；勾选目录 = 级联选中其下全部文件";
+        : "";
   }
 }
 

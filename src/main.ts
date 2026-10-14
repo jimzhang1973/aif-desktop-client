@@ -2784,8 +2784,6 @@ async function renderQuick(content: HTMLElement) {
   try {
     const items = await api.getQuickEntries();
     quickCache = items;
-    // 共享给速览条窗口（mini.ts 读 aif_quick_count 显示徽标）
-    localStorage.setItem("aif_quick_count", String(items.length));
     renderQuickGrid(body, items, quickSearch);
   } catch (e) {
     body.innerHTML = `<div class="empty">加载失败：${esc(String(e).replace(/^"|"$/g, ""))}<br/><span class="hint">请确认已登录 B/S 系统后重试</span></div>`;

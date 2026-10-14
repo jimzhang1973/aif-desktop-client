@@ -47,9 +47,16 @@ interface AiAgent {
   icon: string;
 }
 
+/** B/S「快捷入口」（与主窗 get_quick_entries 同命令）：悬停「快捷」按钮浮出图标列表 */
+interface QuickEntry {
+  id: string;
+  name: string;
+  url: string;
+  icon: string;
+}
+
 const msgN = document.getElementById("m-msg-n")!;
 const todoN = document.getElementById("m-todo-n")!;
-const quickN = document.getElementById("m-quick-n")!;
 const opsBtn = document.getElementById("m-ops")!;
 const opsN = document.getElementById("m-ops-n")!;
 const card = document.getElementById("card")!;
@@ -61,9 +68,12 @@ const cMsgs = document.getElementById("c-msgs")!;
 const cTodoN = document.getElementById("c-todo-n")!;
 const cMsgN = document.getElementById("c-msg-n")!;
 const assistBtn = document.getElementById("m-assist")!;
+const quickBtn = document.getElementById("m-quick")!;
 const sepOps = document.getElementById("m-sep-ops")!;
 const cAgents = document.getElementById("c-agents")!;
 const cAgentsN = document.getElementById("c-agents-n")!;
+const cQuicks = document.getElementById("c-quicks")!;
+const cQuicksN = document.getElementById("c-quicks-n")!;
 
 // 产品形态：AIF（运维）才显示「应用」按钮与告警节；一表通 DCP 隐藏（null = 未拉取）
 let opsProduct: boolean | null = null;
@@ -73,6 +83,9 @@ let baseUrl = "";
 /** 智能体列表缓存（5 分钟 TTL，避免每次悬停都打接口） */
 let agentCache: { at: number; agents: AiAgent[] } | null = null;
 const AGENT_TTL = 5 * 60_000;
+/** 快捷方式缓存（同智能体 5 分钟 TTL） */
+let quickCache: { at: number; items: QuickEntry[] } | null = null;
+const QUICK_TTL = 5 * 60_000;
 
 /** 智能体会话页（与主窗 agentChatUrl 同规则，实测 aiAgentId 参数名）：
  *  DCP=/DCP/ai/index.htm?aiAgentId=，AIF=/AIF/ai/chat/index.htm?aiAgentId= */
@@ -87,6 +100,17 @@ async function fetchAgents(): Promise<AiAgent[]> {
     const agents = await invoke<AiAgent[]>("get_ai_agents");
     agentCache = { at: Date.now(), agents };
     return agents;
+  } catch {
+    return []; // 未登录/接口失败：静默为空，不打扰
+  }
+}
+
+async function fetchQuicks(): Promise<QuickEntry[]> {
+  if (quickCache && Date.now() - quickCache.at < QUICK_TTL) return quickCache.items;
+  try {
+    const items = await invoke<QuickEntry[]>("get_quick_entries");
+    quickCache = { at: Date.now(), items };
+    return items;
   } catch {
     return []; // 未登录/接口失败：静默为空，不打扰
   }
@@ -119,10 +143,6 @@ async function refresh() {
   // 必须先完成产品检测：alertApps 依赖 opsProduct 判定
   await detectOpsProduct();
   paint(unreadCount(), await todoCount());
-  // 快捷功能数量：主窗加载列表后写入共享 localStorage（aif_quick_count）
-  const qc = Number(localStorage.getItem("aif_quick_count") || "0");
-  quickN.textContent = String(Number.isFinite(qc) ? qc : 0);
-  quickN.classList.toggle("hot", qc > 0);
   // 应用告警数（仅 AIF）：有告警亮红，无告警置灰
   const alarms = await alertApps();
   opsN.textContent = String(alarms.length);
@@ -289,24 +309,49 @@ async function renderCard(): Promise<void> {
   } catch {
     cAgents.innerHTML = `<div class="c-empty">智能体加载失败</div>`;
   }
+  // 快捷方式（悬停「快捷」按钮时整卡切换为本节，其余节由 CSS 隐藏）
+  try {
+    const items = await fetchQuicks();
+    cQuicksN.textContent = String(items.length);
+    cQuicksN.classList.toggle("hot", items.length > 0);
+    cQuicks.innerHTML = items.length
+      ? items
+          .map((q) => {
+            // 图标：B/S 快捷入口同款图标，加载失败/缺失 → 首字母色块兜底
+            const ico = q.icon
+              ? `<img src="${esc(q.icon)}" alt="" /><span class="ag-fb">${esc(q.name.slice(0, 1))}</span>`
+              : `<span class="ag-fb" style="display:flex">${esc(q.name.slice(0, 1))}</span>`;
+            return `<div class="c-row" data-url="${esc(q.url)}"><span class="r-ico i-ag${q.icon ? "" : " no-img"}">${ico}</span><div class="r-title">${esc(q.name)}</div></div>`;
+          })
+          .join("")
+      : `<div class="c-empty">暂无快捷方式（B/S「快捷入口」为空）</div>`;
+    // 图标加载失败 → 首字母兜底（内联 onerror 被 CSP 拦截，必须用监听器）
+    cQuicks.querySelectorAll<HTMLElement>(".r-ico.i-ag").forEach((box) => {
+      const img = box.querySelector("img");
+      if (!img) return;
+      img.addEventListener("error", () => box.classList.add("no-img"));
+    });
+  } catch {
+    cQuicks.innerHTML = `<div class="c-empty">快捷方式加载失败</div>`;
+  }
 }
 
 // 悬停显隐：条身划入展示，移出条身/卡片 250ms 后收起（缓冲防抖，允许在条↔卡间移动）
 // 点击任何按钮 → dismissCard 立即收起并挂起，直到鼠标离开后再次进入速览条才重新浮现
 let hideTimer = 0;
 let suppressCard = false;
-// 智能体视图：悬停「助手」按钮时卡片整体切换为可用智能体列表
-let agentMode = false;
-/** 退出智能体视图：卡片恢复常规（待办/消息）内容 */
-function resetAgentView(): void {
-  if (!agentMode) return;
-  agentMode = false;
-  card.classList.remove("agents-only");
+// 替身视图：悬停「助手」→智能体列表；悬停「快捷」→快捷方式列表（卡片整体切换）
+let altView: "agents" | "quicks" | null = null;
+/** 退出替身视图：卡片恢复常规（待办/消息）内容 */
+function resetAltView(): void {
+  if (!altView) return;
+  altView = null;
+  card.classList.remove("agents-only", "quicks-only");
 }
 function showCard(): void {
   window.clearTimeout(hideTimer);
   suppressCard = false; // 重新进入速览条：解除挂起，恢复正常悬停显隐
-  resetAgentView(); // 回到常规视图（智能体视图仅在悬停「助手」按钮时进入）
+  resetAltView(); // 回到常规视图（替身视图仅在悬停对应按钮时进入）
   void renderCard();
   card.classList.add("show");
   card.setAttribute("aria-hidden", "false");
@@ -317,7 +362,7 @@ function hideCard(): void {
   hideTimer = window.setTimeout(() => {
     card.classList.remove("show");
     card.setAttribute("aria-hidden", "true");
-    resetAgentView(); // 卡片收起后下次展开恢复常规内容
+    resetAltView(); // 卡片收起后下次展开恢复常规内容
     void invoke("set_mini_card_visible", { visible: false });
   }, 250);
 }
@@ -326,7 +371,7 @@ function dismissCard(): void {
   window.clearTimeout(hideTimer);
   card.classList.remove("show");
   card.setAttribute("aria-hidden", "true");
-  resetAgentView();
+  resetAltView();
   void invoke("set_mini_card_visible", { visible: false });
   suppressCard = true;
 }
@@ -351,6 +396,7 @@ bindCardRows(cTodos);
 bindCardRows(cOps);
 bindCardRows(cMsgs);
 bindCardRows(cAgents);
+bindCardRows(cQuicks);
 document.getElementById("c-panel")!.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "panel");
@@ -369,10 +415,9 @@ document.getElementById("m-todo")!.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "todos");
 });
-// 快捷功能：与待办按钮同链路，切到主窗「快捷功能」页
-document.getElementById("m-quick")!.addEventListener("click", () => {
+// 快捷功能：悬停浮出快捷方式列表（点击图标行由主窗 webview 打开），点击按钮切到主窗快捷功能页
+quickBtn.addEventListener("click", () => {
   dismissCard();
-  console.info("[mini] 快捷功能点击 → emit mini-navigate=quick");
   void emit("mini-navigate", "quick");
 });
 // 应用（仅 AIF）：切到主窗「应用中心」页
@@ -385,26 +430,37 @@ assistBtn.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "assistant");
 });
-// 悬停「助手」按钮：浮窗整体切换为可用智能体列表。
-// 不在按钮 mouseleave 里复位——鼠标移去卡片选智能体时按钮 mouseleave 会先触发，
-// 卡片会被错误切回常规视图；改为「卡片收起」或「移回条身其他按钮」时才退出智能体视图。
+// 悬停「助手」/「快捷」按钮：浮窗整体切换为对应列表（智能体 / 快捷方式）。
+// 不在按钮 mouseleave 里复位——鼠标移去卡片选择时按钮 mouseleave 会先触发，
+// 卡片会被错误切回常规视图；改为「卡片收起」或「移回条身其他按钮」时才退出替身视图。
 assistBtn.addEventListener("mouseenter", () => {
   if (suppressCard) return;
-  agentMode = true;
+  altView = "agents";
   card.classList.add("agents-only");
+  ensureCardShown();
+});
+quickBtn.addEventListener("mouseenter", () => {
+  if (suppressCard) return;
+  altView = "quicks";
+  card.classList.add("quicks-only");
+  ensureCardShown();
+});
+/** 替身视图下确保卡片展开（常规 showCard 会复位替身视图，故单独处理） */
+function ensureCardShown(): void {
   if (!card.classList.contains("show")) {
     card.classList.add("show");
     card.setAttribute("aria-hidden", "false");
     void invoke("set_mini_card_visible", { visible: true });
   }
   void renderCard();
-});
-// 条身内部移动：从「助手」按钮移到其他按钮/空白处 → 退出智能体视图恢复常规
+}
+// 条身内部移动：从「助手」/「快捷」按钮移到其他按钮/空白处 → 退出替身视图恢复常规
 // （卡片有自己的 mouseenter 保活，鼠标在卡片上时不会触发本监听）
 miniEl.addEventListener("mouseover", (e) => {
-  if (!agentMode) return;
-  if ((e.target as HTMLElement).closest("#m-assist")) return;
-  resetAgentView();
+  if (!altView) return;
+  const owner = altView === "agents" ? "#m-assist" : "#m-quick";
+  if ((e.target as HTMLElement).closest(owner)) return;
+  resetAltView();
   if (card.classList.contains("show")) void renderCard();
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
@@ -419,7 +475,7 @@ void listen("new-message", () => void refresh());
 void listen("messages-updated", () => void refresh());
 void listen("todos-updated", () => void refresh());
 window.addEventListener("storage", (e) => {
-  if (e.key === "aif_unread_msg_ids" || e.key === "aif_quick_count") void refresh();
+  if (e.key === "aif_unread_msg_ids") void refresh();
   // 产品形态切换（AIF ↔ DCP）：同步应用按钮/告警节显隐与条身长度
   else if (e.key === "aif_ops_product") onProductSwitched();
   // 主窗标题栏刷新按钮强制刷新了智能体列表：失效本地缓存，下次悬停重新拉取

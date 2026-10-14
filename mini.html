@@ -24,6 +24,10 @@
         <div class="c-head">可用智能体 <span class="c-badge" id="c-agents-n">0</span></div>
         <div class="c-rows" id="c-agents"></div>
       </div>
+      <div class="c-sec" id="c-quicks-sec">
+        <div class="c-head">快捷功能 <span class="c-badge" id="c-quicks-n">0</span></div>
+        <div class="c-rows" id="c-quicks"></div>
+      </div>
       <div class="c-foot" id="c-panel" title="打开主面板">打开面板 →</div>
     </div>
     <!-- data-tauri-drag-region：按住空白区可拖动位置（按钮为子元素不触发拖拽，点击行为不变） -->
@@ -41,10 +45,10 @@
         <span class="m-ico m-todo-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 5.5 1 1 2-2"/><path d="m4 11.5 1 1 2-2"/><path d="m4 17.5 1 1 2-2"/></svg></span>
         <span class="m-count" id="m-todo-n">0</span>
       </button>
+      <!-- 快捷功能：悬停把浮窗切换为快捷方式列表，点击打开主窗快捷功能页（无数量徽标） -->
       <div class="m-sep"></div>
-      <button class="m-btn" id="m-quick" title="快捷功能：点击打开快捷功能页">
+      <button class="m-btn" id="m-quick" title="快捷功能：悬停查看快捷方式，点击打开快捷功能页">
         <span class="m-ico m-quick-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.8 13.2h6L10.9 22l8.3-11.2h-6z"/></svg></span>
-        <span class="m-count" id="m-quick-n">0</span>
       </button>
       <!-- 应用（仅 AIF 运维产品显示，DCP 隐藏；由 mini.ts 按 get_settings().ops_product 控制，
            连同前导分隔线一起显隐，避免双分隔线相邻） -->

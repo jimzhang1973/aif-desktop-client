@@ -127,12 +127,15 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   font-size: 10px; font-weight: 600; line-height: 1.4;
   color: #b45309; background: #fef3c7; border-radius: 8px;
 }
-/* ---------------- 助手：悬停「助手」按钮 → 卡片整体切换为可用智能体列表 ---------------- */
-/* 默认隐藏智能体节；#card.agents-only 时只显示智能体节 */
+/* ---------------- 助手/快捷：悬停对应按钮 → 卡片整体切换为对应列表 ---------------- */
+/* 默认隐藏智能体/快捷节；#card.agents-only / #card.quicks-only 时只显示对应节 */
 #c-agents-sec { display: none; }
 #card.agents-only #c-agents-sec { display: block; }
+#c-quicks-sec { display: none; }
+#card.quicks-only #c-quicks-sec { display: block; }
 #card.agents-only > .c-sec:not(#c-agents-sec) { display: none; }
-/* 智能体行：页面同款图标（加载失败换首字母色块）+ 名称 + 描述 */
+#card.quicks-only > .c-sec:not(#c-quicks-sec) { display: none; }
+/* 智能体/快捷方式行：页面同款图标（加载失败换首字母色块）+ 名称 */
 .c-row .r-ico.i-ag {
   width: 22px; height: 22px; margin-top: 0;
   border-radius: 6px; overflow: hidden;

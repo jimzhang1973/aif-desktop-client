@@ -2054,9 +2054,13 @@ pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgen
     // 2) /AIF/ai/persona/agent/authorized.htm —— 旧版接口（B/S 原生 matters.html 写死，
     //    AI 模块仅部署在 AIF 域下；新版接口 404/非成功时自动回退）
     let mut last_err = String::new();
-    for path in [
-        format!("/{root}/ai/agent/authorized.htm"),
-        "/AIF/ai/persona/agent/authorized.htm".to_string(),
+    // 数据源探测顺序：
+    // 1) /{产品根}/ai/agent/authorized.htm —— 新版智能体授权接口（DCP 为 /DCP/ai/agent/**，
+    //    实测 POST/GET 均可，DCP 会话下返回 18 个智能体）
+    // 2) /AIF/ai/persona/agent/authorized.htm —— 旧版接口（B/S 原生 matters.html 写死）
+    for (src_root, path) in [
+        (root.clone(), format!("/{root}/ai/agent/authorized.htm")),
+        ("AIF".to_string(), "/AIF/ai/persona/agent/authorized.htm".to_string()),
     ] {
         let url = format!("{base}{path}");
         match state
@@ -2078,13 +2082,33 @@ pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgen
                     let gstr = |o: &serde_json::Value, k: &str| -> String {
                         o.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string()
                     };
+                    // 图标归一化为绝对 URL：实测 B/S 返回相对路径 resources/images/...，
+                    // 真实资源位于 {base}/{产品根}/resources/...（/DCP/resources/... 200 实证）。
+                    // 另外兼容服务端偶发的重复版本号尾巴（?v=...?v=...），只保留第一段 query。
+                    let icon_abs = |raw: &str| -> String {
+                        if raw.is_empty() || raw.starts_with("http://") || raw.starts_with("https://") {
+                            return raw.to_string();
+                        }
+                        let joined = if raw.starts_with('/') {
+                            format!("{base}{raw}")
+                        } else {
+                            format!("{base}/{src_root}/{raw}")
+                        };
+                        match joined.split_once('?') {
+                            Some((p, q)) => {
+                                let q = q.split("?v=").next().unwrap_or(q);
+                                if q.is_empty() { p.to_string() } else { format!("{p}?{q}") }
+                            }
+                            None => joined,
+                        }
+                    };
                     let agents: Vec<AiAgent> = arr
                         .iter()
                         .map(|a| AiAgent {
                             id: gstr(a, "id"),
                             name: gstr(a, "name"),
                             description: gstr(a, "description"),
-                            icon: gstr(a, "icon"),
+                            icon: icon_abs(&gstr(a, "icon")),
                         })
                         .filter(|a| !a.id.is_empty())
                         .collect();

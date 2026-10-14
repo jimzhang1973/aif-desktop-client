@@ -914,11 +914,15 @@ function applyNavLabels(): void {
   document.getElementById("sidenav")?.classList.toggle("hide-labels", !settings?.nav_show_labels);
 }
 
-/** 智能体会话页：B/S 原生行为 top.openNewTab('ai/chat/index.htm?aiAgentId='+id)。
- *  AI 模块仅部署在 AIF 域下（与 get_ai_agents 数据源同域），两产品统一走 /AIF。 */
+/** 智能体会话页：实测 2026-10-14（curl 登录态验证）——
+ *  - DCP：/DCP/ai/index.htm?aiAgentId=<id> 服务端注入 let agentId="<id>"，进入即专用智能体问答；
+ *  - AIF：/AIF/ai/chat/index.htm?aiAgentId=<id>（B/S 原生 top.openNewTab 行为）。
+ *  注意参数名是 aiAgentId（agentId 不生效）；图标由 Rust 侧归一化为绝对 URL */
 function agentChatUrl(id: string): string {
   const base = (settings?.base_url || "").replace(/\/+$/, "");
-  return `${base}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`;
+  return settings?.ops_product
+    ? `${base}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`
+    : `${base}/DCP/ai/index.htm?aiAgentId=${encodeURIComponent(id)}`;
 }
 
 /** 「助手」页：当前账号授权的 AI 智能体列表，点击在受控 webview 打开会话 */

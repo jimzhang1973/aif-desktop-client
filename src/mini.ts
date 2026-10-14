@@ -71,9 +71,11 @@ let baseUrl = "";
 let agentCache: { at: number; agents: AiAgent[] } | null = null;
 const AGENT_TTL = 5 * 60_000;
 
-/** 智能体会话页（与主窗 agentChatUrl 同规则）：AI 模块仅部署在 AIF 域下 */
+/** 智能体会话页（与主窗 agentChatUrl 同规则，实测 aiAgentId 参数名）：
+ *  DCP=/DCP/ai/index.htm?aiAgentId=，AIF=/AIF/ai/chat/index.htm?aiAgentId= */
 function agentChatUrl(id: string): string {
-  return `${baseUrl}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`;
+  const path = opsProduct ? "/AIF/ai/chat/index.htm" : "/DCP/ai/index.htm";
+  return `${baseUrl}${path}?aiAgentId=${encodeURIComponent(id)}`;
 }
 
 async function fetchAgents(): Promise<AiAgent[]> {

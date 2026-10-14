@@ -209,17 +209,27 @@ pub(crate) fn bs_new_window_strategy<R: Runtime>(
         .background_color(tauri::webview::Color(255, 255, 255, 255))
         // 点击链接打开的 webview 窗口默认最大化
         .maximized(true)
-        // 补齐 B/S 框架函数（top.openNewTab 等），弹窗内页面链接才打得开
-        .initialization_script(BS_WINDOW_SHIM)
+        // 补齐 B/S 框架函数（top.openNewTab 等），弹窗内页面链接才打得开；
+        // 追加 window.close 捕获：IPC 可用走 tab_close_self，否则标题哨兵兜底
+        .initialization_script(format!(
+            "{BS_WINDOW_SHIM}\n{}",
+            crate::tabs::close_capture_script(&label)
+        ))
         // 位置尺寸沿用页面 window.open 特征 + 跨平台环境/会话一致性（官方 helper）
         .window_features(features)
-        // 首帧防黑闪：真实 URL 弹窗先隐藏，页面开始加载（Started 且非 about:）再显示；
+        // 首帧防黑闪：真实 URL 弹窗先隐藏，页面加载完成（Finished 且非 about:）再显示；
         // about:blank 弹窗无加载事件可等，创建后立即显示（由打开方接管句柄写入内容）
         .visible(!blank)
+        // window.close 兜底：页面自关（选人弹窗等常见）→ 标题哨兵捕获后关本窗口
+        .on_document_title_changed(|wv, title| {
+            if title == crate::tabs::CLOSE_SENTINEL {
+                let _ = wv.close();
+            }
+        })
         .on_new_window(move |u, f| bs_new_window_strategy(&app2, u, f, &host2))
         .on_download(bs_download_handler)
         .on_page_load(|wv, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Started
+            if payload.event() == tauri::webview::PageLoadEvent::Finished
                 && !payload.url().as_str().starts_with("about:")
             {
                 let _ = wv.show();

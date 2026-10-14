@@ -169,40 +169,66 @@ fn title_from_url(url: &str) -> String {
     }
 }
 
-/// 标签页附加初始化脚本（拼在 BS_WINDOW_SHIM 之后，保证覆盖其 window.close）：
-/// window.close → 关闭所属标签页。
-/// 标题同步改由 Rust 端 WebviewBuilder::on_document_title_changed 统一处理
-/// （直接读取 webview 引擎维护的页面真实 title，比页面内 JS 轮询更可靠）。
-/// 加固点：
-/// 1. 用 Object.defineProperty 固化 close（writable/configurable=false）——
-///    部分页面脚本会重写 window.close，普通赋值式覆盖会被冲掉导致点击无响应；
-/// 2. invoke 返回 Promise，拒绝（权限/异常）不会被同步 try/catch 捕获，
-///    显式 .catch 打 console.error 便于 DevTools 诊断。
-fn tab_extra_script(label: &str) -> String {
+/// window.close 兜底哨兵：页面 JS 调 window.close() 时若 IPC 不可用，
+/// 以标题哨兵上报，Rust 端 on_document_title_changed 捕获后关标签/关窗。
+pub(crate) const CLOSE_SENTINEL: &str = "__aif_close__";
+
+/// window.close 捕获脚本（标签与 B/S 弹窗共用）：
+/// - IPC 可用（域在 capabilities remote 白名单）→ invoke tab_close_self；
+/// - IPC 不可用（__TAURI_INTERNALS__ 未注入 / invoke 报错）→ 标题哨兵兜底。
+/// 双通道确保任意部署形态（域名/IP/端口）都能捕捉页面发起的关闭。
+pub(crate) fn close_capture_script(label: &str) -> String {
     format!(
         r#"
 (function () {{
-  var t = null;
-  try {{ t = window.__TAURI_INTERNALS__; }} catch (e) {{}}
   var LABEL = "{label}";
-  if (t && typeof t.invoke === "function") {{
-    var tabClose = function () {{
-      try {{
-        t.invoke("tab_close_self", {{ label: LABEL }}).catch(function (err) {{
-          console.error("[aif] tab_close_self 失败:", err);
-        }});
-      }} catch (e) {{
-        console.error("[aif] tab_close_self 调用异常:", e);
-      }}
-    }};
+  var doClose = function () {{
+    var invoked = false;
     try {{
-      Object.defineProperty(window, "close", {{ value: tabClose, writable: false, configurable: false }});
+      var t = window.__TAURI_INTERNALS__;
+      if (t && typeof t.invoke === "function") {{
+        invoked = true;
+        t.invoke("tab_close_self", {{ label: LABEL }}).catch(function (err) {{
+          console.error("[aif] tab_close_self 失败，转标题哨兵:", err);
+          try {{ document.title = "{sentinel}"; }} catch (e2) {{}}
+        }});
+      }}
     }} catch (e) {{
-      window.close = tabClose;
+      console.error("[aif] close 调用异常:", e);
     }}
+    if (!invoked) {{
+      try {{ document.title = "{sentinel}"; }} catch (e2) {{}}
+    }}
+  }};
+  try {{
+    Object.defineProperty(window, "close", {{ value: doClose, writable: false, configurable: false }});
+  }} catch (e) {{
+    window.close = doClose;
   }}
-}})();"#
+}})();"#,
+        label = label,
+        sentinel = CLOSE_SENTINEL,
     )
+}
+
+/// 关闭指定标签（存在才关）：tab_close_self 命令与标题哨兵兜底共用。
+fn close_tab_checked(app: &AppHandle, state: &std::sync::Arc<AppState>, label: &str) {
+    let exists = {
+        let inner = state.tabs.0.lock().unwrap();
+        inner.tabs.iter().any(|t| t.id == label)
+    };
+    log::info!("[tab] window.close → label={label} exists={exists}");
+    if !exists {
+        // 非标签 label：B/S 弹窗（bs-page-N）经同一命令关闭自身窗口
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.close();
+        }
+        return;
+    }
+    let _ = close_tab(app, state, label);
+    persist_and_emit(app, state);
+    // B/S 主动关闭页面常伴随数据变更（详情/编辑页），通知前端刷新消息/待办
+    let _ = app.emit("bs-closed", ());
 }
 
 /// 创建标签子 webview（调用方不得持有 TabInner 锁——on_new_window 事件线程
@@ -217,7 +243,7 @@ fn create_tab_webview(
     let target = Url::parse(url).map_err(|e| format!("URL 无效: {e}"))?;
     let host = target.host_str().unwrap_or("").to_string();
     let main = app.get_window("main").ok_or("主窗口不存在")?;
-    let init = format!("{}\n{}", BS_WINDOW_SHIM, tab_extra_script(id));
+    let init = format!("{}\n{}", BS_WINDOW_SHIM, close_capture_script(id));
     let app2 = app.clone();
     let host2 = host.clone();
     // 页面真实标题（webview 引擎维护的 document.title）变化时，直接更新存储并广播 tab-title。
@@ -232,6 +258,17 @@ fn create_tab_webview(
         // 白底让首帧与页面底色一致，消除黑闪
         .background_color(tauri::webview::Color(255, 255, 255, 255))
         .on_document_title_changed(move |_wv, title| {
+            if title == CLOSE_SENTINEL {
+                // window.close 兜底（IPC 不可用路径）：标题哨兵 → 关所属标签
+                let st: tauri::State<'_, std::sync::Arc<AppState>> = title_app.state();
+                let st2 = st.inner().clone();
+                let app3 = title_app.clone();
+                let lid = title_id.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    close_tab_checked(&app3, &st2, &lid);
+                });
+                return;
+            }
             if title.trim().is_empty() {
                 return; // about:blank 等空标题不回写，避免标题闪空
             }
@@ -291,11 +328,11 @@ fn create_tab_webview(
             bs_new_window_strategy(&app2, u, f, &host2)
         })
         .on_download(bs_download_handler)
-        // 首帧防黑闪：创建后先隐藏（见下方 hide），等真实导航提交（Started 且非
-        // about:）再显示——WebView2 控制器初始化/首帧合成期会露黑（深色系统尤甚），
-        // 隐藏到页面开始加载再显示，可见的首帧就是页面白底。
+        // 首帧防黑闪：创建后先隐藏（见下方 hide），等页面加载完成（Finished 且非
+        // about:）再显示——Started 时 WebView2 首次合成未完成，提前显示会闪黑底；
+        // 加载期间露出的是主窗浅色底，无突兀感。
         .on_page_load(|wv, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Started
+            if payload.event() == tauri::webview::PageLoadEvent::Finished
                 && !payload.url().as_str().starts_with("about:")
             {
                 let _ = wv.show();
@@ -790,8 +827,8 @@ pub fn tab_report_title(
     }
 }
 
-/// B/S 页面在标签内调用 window.close() → 关闭所属标签。
-/// label 由注入脚本焙入，仅接受真实存在的标签（本地应用，无越权面）。
+/// B/S 页面在标签/弹窗内调用 window.close() → 关闭所属标签（tab-N）或弹窗窗口（bs-page-N）。
+/// label 由注入脚本焙入，仅接受真实存在的对象（本地应用，无越权面）。
 #[tauri::command]
 pub async fn tab_close_self(
     app: AppHandle,
@@ -800,18 +837,7 @@ pub async fn tab_close_self(
 ) -> Result<(), String> {
     let state = state.inner().clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
-        let exists = {
-            let inner = state.tabs.0.lock().unwrap();
-            inner.tabs.iter().any(|t| t.id == label)
-        };
-        log::info!("[tab] window.close → tab_close_self label={label} exists={exists}");
-        if !exists {
-            return;
-        }
-        let _ = close_tab(&app, &state, &label);
-        persist_and_emit(&app, &state);
-        // B/S 主动关闭页面常伴随数据变更（详情/编辑页），通知前端刷新消息/待办
-        let _ = app.emit("bs-closed", ());
+        close_tab_checked(&app, &state, &label);
     })
     .await;
     Ok(())

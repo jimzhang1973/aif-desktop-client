@@ -2550,6 +2550,9 @@ async function loginToEntry(entry: { ops: boolean; url: string; username: string
   settings.ops_product = entry.ops;
   try {
     await api.saveSettings(settings);
+    // 广播产品形态给速览条（mini 窗口 storage 监听 → 重新检测 ops_product，
+    // 同步隐藏/显示「应用」按钮与「告警应用」节，条身高度自适应）
+    localStorage.setItem("aif_ops_product", settings.ops_product ? "1" : "0");
     toast(`正在切换登录：${entry.url}`);
     await api.loginLocal(entry.username, entry.password, "", false);
     toast("登录成功，正在刷新数据");

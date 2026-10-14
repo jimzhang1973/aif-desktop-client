@@ -99,6 +99,19 @@ async function todoCount(): Promise<number> {
   }
 }
 
+/** 产品形态切换（主窗「切换入口」成功后写 aif_ops_product）：
+ *  立即隐藏「应用」按钮/告警节，重新检测后按需恢复；卡片若开着则重渲染 */
+function onProductSwitched(): void {
+  opsProduct = null;
+  opsBtn.hidden = true;
+  cOpsSec.hidden = true;
+  opsN.textContent = "";
+  cOps.innerHTML = "";
+  void refresh().then(() => {
+    if (opsProduct && card.classList.contains("show")) void renderCard();
+  });
+}
+
 /** 运维产品识别（仅拉取一次）：AIF 显示应用按钮/告警节，DCP 隐藏 */
 async function detectOpsProduct(): Promise<void> {
   if (opsProduct !== null) return;
@@ -299,6 +312,8 @@ void listen("messages-updated", () => void refresh());
 void listen("todos-updated", () => void refresh());
 window.addEventListener("storage", (e) => {
   if (e.key === "aif_unread_msg_ids" || e.key === "aif_quick_count") void refresh();
+  // 产品形态切换（AIF ↔ DCP）：同步应用按钮/告警节显隐与条身长度
+  else if (e.key === "aif_ops_product") onProductSwitched();
 });
 window.setInterval(() => void refresh(), 60_000);
 

@@ -1180,8 +1180,7 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
     }),
   );
   diskMarkLoadedFromIndex();
-  // 默认展开第一层（根目录）
-  for (const r of diskSt.roots) diskSt.expanded.add(r.id);
+  // 默认全部折叠：用户点目录名逐级展开
   diskRenderTree();
   diskUpdateButtons();
 }
@@ -1330,16 +1329,13 @@ function diskRenderTree(): void {
         );
         if (open && kids) walk(kids, depth + 1);
       } else {
-        // 最末级文件直接作为树叶子展示；FILE 可勾选，在线文档（DOC/RICHTEXT…）不可下载仅展示
-        const isFile = n.subtype === "FILE";
+        // 最末级文件直接作为树叶子展示；全部文件行带勾选框（在线文档可勾选，但下载仅 FILE 附件）
         const disp = diskFileDisplay(n);
         const chk = diskSt.checked.has(n.id) ? " checked" : "";
         parts.push(
           `<div class="disk-tree-item is-file" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(disp.name)}">` +
             `<span class="tw"></span>` +
-            (isFile
-              ? `<input type="checkbox" class="d-chk" data-id="${esc(n.id)}"${chk} title="勾选文件" />`
-              : `<span class="d-chk-sp"></span>`) +
+            `<input type="checkbox" class="d-chk" data-id="${esc(n.id)}"${chk} title="勾选文件" />` +
             `<span class="d-ico">${diskFileIconHtml(n)}</span><span class="tname">${esc(disp.name)}</span></div>`,
         );
       }

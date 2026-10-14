@@ -253,7 +253,41 @@ export const _apiRaw = {
   tabRestoreSession: () => invoke<TabInfo[]>("tab_restore_session"),
   // 单标签模式：在已有标签内重新加载到新 URL（更新而非新建）
   tabNavigate: (id: string, url: string) => invoke<TabInfo[]>("tab_navigate", { id, url }),
+  // ---- 网盘（个人空间 + 有权限空间：目录浏览 / 批量上传 / 批量下载）----
+  diskPersonalSpaceId: () => invoke<string>("disk_personal_space_id"),
+  diskTree: (spaceId: string) => invoke<DiskNode[]>("disk_tree", { spaceId }),
+  diskNodes: (spaceId: string, nodeId: string, nodeType: string) =>
+    invoke<DiskNode[]>("disk_nodes", { spaceId, nodeId, nodeType }),
+  diskUploadFiles: (spaceId: string, subjectId: string, paths: string[]) =>
+    invoke<void>("disk_upload_files", { spaceId, subjectId, paths }),
+  diskDownloadFiles: (items: DiskDlItem[], destDir: string) =>
+    invoke<void>("disk_download_files", { items, destDir }),
+  diskRegisterContextMenu: (enable: boolean) => invoke<void>("disk_register_context_menu", { enable }),
+  diskContextMenuStatus: () => invoke<boolean>("disk_context_menu_status"),
 };
+
+/** 网盘目录树节点（B/S knowledge space findTree/findTreeByNodeId） */
+export interface DiskNode {
+  id: string;
+  name: string;
+  pid: string;
+  /** 祖先链（尾部含自身 id） */
+  pids: string;
+  nodeType: "subject" | "article";
+  isLeaf: boolean;
+  /** article 类型：FILE / DOC / RICHTEXT / EXCEL / COLLEXCEL */
+  subtype: string;
+  /** FILE 型文章的扩展名 */
+  subFileType: string;
+  updateTime: number;
+}
+
+/** 批量下载项（relDir = 相对所选目录的子目录链，如 "2024年工作/例子"） */
+export interface DiskDlItem {
+  articleId: string;
+  name: string;
+  relDir: string;
+}
 
 export function on<T>(event: string, cb: (p: T) => void): Promise<UnlistenFn> {
   return listen<T>(event, (e) => cb(e.payload as T));

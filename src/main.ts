@@ -1,7 +1,7 @@
 import "./styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { api, on, type AccountEntry, type AiAgent, type DocRow, type HistoryMessage, type MatterBadge, type MatterRow, type MessageRow, type OpsApp, type OpsAppGroup, type QuickEntry, type RoleOption, type Settings, type SpaceRow, type TabInfo, type TodoRow, type UserInfo } from "./api";
+import { api, on, type AccountEntry, type AiAgent, type DiskDlItem, type DiskNode, type DocRow, type HistoryMessage, type MatterBadge, type MatterRow, type MessageRow, type OpsApp, type OpsAppGroup, type QuickEntry, type RoleOption, type Settings, type SpaceRow, type TabInfo, type TodoRow, type UserInfo } from "./api";
 
 const app = document.getElementById("app")!;
 const win = getCurrentWindow();
@@ -9,7 +9,7 @@ const win = getCurrentWindow();
 let settings: Settings | null = null;
 let userInfo: UserInfo | null = null;
 let captchaRequired = false;
-let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "quick" | "assistant" | "profile" = "messages";
+let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "disk" | "quick" | "assistant" | "profile" = "messages";
 let soundCache: Record<string, HTMLAudioElement> = {};
 // 应用版本号（5.0.1+build-id），启动时取一次
 let appVersion = "…";
@@ -777,6 +777,11 @@ const ICONS: Record<string, { active: string; idle: string }> = {
     active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#6366f1"/><g fill="#fff"><rect x="6.8" y="9" width="10.4" height="8" rx="2.4"/><circle cx="12" cy="5.4" r="1.1"/><rect x="11.3" y="6" width="1.4" height="2.2" rx="0.7"/></g><circle cx="9.9" cy="13" r="1.05" fill="#6366f1"/><circle cx="14.1" cy="13" r="1.05" fill="#6366f1"/></svg>`,
     idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8.5" width="14" height="10" rx="3"/><path d="M12 8.5V5.6"/><circle cx="12" cy="4.4" r="1.1"/><path d="M9.3 13.5h.01M14.7 13.5h.01"/></svg>`,
   },
+  disk: {
+    // 网盘：云朵 + 上传箭头（天蓝）
+    active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#0ea5e9"/><path d="M7.5 15.5a3.3 3.3 0 0 1-.3-6.6 4.4 4.4 0 0 1 8.5-.9 3.4 3.4 0 0 1 1.4 6.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17.5v-5.2M9.8 14.3l2.2-2.2 2.2 2.2" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 15.5a3.3 3.3 0 0 1-.3-6.6 4.4 4.4 0 0 1 8.5-.9 3.4 3.4 0 0 1 1.4 6.5"/><path d="M12 17.5v-5.2M9.8 14.3l2.2-2.2 2.2 2.2"/></svg>`,
+  },
   profile: {
     active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#10b981"/><circle cx="12" cy="9.6" r="3" fill="#fff"/><path d="M5.8 18.6c.9-2.6 3.3-4.1 6.2-4.1s5.3 1.5 6.2 4.1" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>`,
     idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.3" r="3.3"/><path d="M5.3 19.2c.9-2.9 3.5-4.6 6.7-4.6s5.8 1.7 6.7 4.6"/></svg>`,
@@ -806,6 +811,7 @@ function renderPanel() {
           ${settings?.ops_product ? `<button class="nav-btn" data-tab="ops" title="运维"><span class="nav-ico idle">${ICONS.ops.idle}</span><span class="nav-ico active">${ICONS.ops.active}</span><span class="nav-label">运维</span></button>` : ""}
           <button class="nav-btn" data-tab="docs" title="文档"><span class="nav-ico idle">${ICONS.docs.idle}</span><span class="nav-ico active">${ICONS.docs.active}</span><span class="nav-label">文档</span></button>
           <button class="nav-btn" data-tab="spaces" title="空间"><span class="nav-ico idle">${ICONS.spaces.idle}</span><span class="nav-ico active">${ICONS.spaces.active}</span><span class="nav-label">空间</span></button>
+          <button class="nav-btn" data-tab="disk" title="网盘"><span class="nav-ico idle">${ICONS.disk.idle}</span><span class="nav-ico active">${ICONS.disk.active}</span><span class="nav-label">网盘</span></button>
           <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span><span class="nav-label">快捷</span></button>
           <button class="nav-btn" data-tab="assistant" title="助手"><span class="nav-ico idle">${ICONS.assistant.idle}</span><span class="nav-ico active">${ICONS.assistant.active}</span><span class="nav-label">助手</span></button>
           <button class="nav-btn collapse-btn" id="btn-collapse" title="折叠列表页"><span class="nav-ico idle">${listCollapsed ? UNFOLD_LIST_SVG : FOLD_LIST_SVG}</span></button>
@@ -917,6 +923,7 @@ function switchTab(tab: typeof currentTab) {
   else if (tab === "docs") renderDocs(content);
   else if (tab === "spaces") renderSpaces(content);
   else if (tab === "quick") void renderQuick(content);
+  else if (tab === "disk") void renderDisk(content);
   else if (tab === "assistant") void renderAssistant(content);
   else renderProfile(content);
 }
@@ -987,6 +994,402 @@ async function renderAssistant(content: HTMLElement, force = false) {
   document.getElementById("asst-refresh")!.addEventListener("click", () => {
     void renderAssistant(content, true);
   });
+}
+
+// ==================== 网盘（个人空间 + 有权限空间） ====================
+
+/** 网盘页状态（跨渲染保留，右键菜单流程依赖它） */
+const diskSt = {
+  spaceId: "",
+  spaces: [] as { id: string; name: string }[],
+  roots: [] as DiskNode[],
+  loaded: new Set<string>(), // 已拉过子节点的 subjectId
+  children: new Map<string, DiskNode[]>(), // subjectId → 直接子节点
+  flat: new Map<string, DiskNode>(), // id → 节点（diskNodes 返回整树扁平列表，一次灌满）
+  expanded: new Set<string>(),
+  selected: null as DiskNode | null,
+  checked: new Set<string>(), // 勾选的 FILE 文章 id
+  pending: [] as string[], // 资源管理器右键带入的待上传文件
+};
+
+interface DiskProgressEvt {
+  kind: "upload" | "download";
+  file: string;
+  done: number;
+  total: number;
+  ok: boolean;
+  msg: string;
+}
+
+/** 上传目标记忆键（按产品隔离：AIF/DCP 会话与个人空间数据不互通） */
+function diskTargetKey(): string {
+  return `disk_last_target_${settings?.ops_product ? "aif" : "dcp"}`;
+}
+function diskLastTarget(): { spaceId: string; subjectId: string; name: string } | null {
+  try {
+    return JSON.parse(localStorage.getItem(diskTargetKey()) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function diskLog(line: string, ok: boolean): void {
+  const el = document.getElementById("disk-log");
+  if (!el) return;
+  const row = document.createElement("div");
+  row.className = `disk-log-row ${ok ? "ok" : "bad"}`;
+  row.textContent = line;
+  el.prepend(row);
+  while (el.children.length > 8) el.lastChild?.remove();
+}
+
+// 进度事件：上传/下载统一打到底部日志（页面不存在时忽略）
+void on<DiskProgressEvt>("disk-progress", (p) => {
+  const tag = p.kind === "upload" ? "上传" : "下载";
+  if (!p.ok && p.msg) diskLog(`${tag} ✗ ${p.file}：${p.msg}`, false);
+  else if (p.msg && p.msg !== "全部完成") diskLog(`${tag} ✓ ${p.file}（${p.done}/${p.total}）`, true);
+  if (p.msg === "全部完成") {
+    diskLog(`${tag}：全部完成（${p.total} 个）`, true);
+    // 上传完成 → 刷新当前目录
+    if (p.kind === "upload" && diskSt.selected) {
+      diskSt.loaded.delete(diskSt.selected.id);
+      diskSt.children.delete(diskSt.selected.id);
+      void diskSelectSubject(diskSt.selected, true);
+    }
+  }
+});
+
+// 资源管理器右键「上传到个人空间」：第二实例转发文件路径
+void on<string[]>("disk-upload-request", (paths) => {
+  void (async () => {
+    if (!paths?.length) return;
+    diskSt.pending = paths;
+    switchTab("disk");
+    const last = diskLastTarget();
+    const pid = await api.diskPersonalSpaceId().catch(() => "");
+    if (last && pid && last.spaceId === pid) {
+      await diskLoadSpace(pid);
+      const subj = diskSt.flat.get(last.subjectId);
+      if (subj) {
+        await diskSelectSubject(subj, true);
+        void diskUploadTo(subj);
+        return;
+      }
+    }
+    toast(`已就绪：请选择目标目录后点「上传」（${paths.length} 个文件）`);
+  })();
+});
+
+/** 「网盘」页：左侧空间/目录树，右侧文件列表 + 批量上传/下载 */
+async function renderDisk(content: HTMLElement) {
+  content.innerHTML = `
+    <div class="disk-wrap">
+      <aside class="disk-side">
+        <select id="disk-space" class="disk-select" title="选择空间"></select>
+        <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
+      </aside>
+      <section class="disk-main">
+        <div class="disk-bar">
+          <span class="disk-crumb" id="disk-crumb">个人空间</span>
+          <span class="tb-spacer"></span>
+          <button class="disk-btn" id="disk-up" title="上传文件到当前目录">↑ 上传</button>
+          <button class="disk-btn" id="disk-dl-sel" title="下载勾选的文件">↓ 下载选中</button>
+          <button class="disk-btn" id="disk-dl-all" title="递归下载当前目录（含子目录）的全部文件">⇩ 下载整个目录</button>
+          <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
+        </div>
+        <div class="disk-list" id="disk-list"><div class="empty">正在加载…</div></div>
+        <div class="disk-log" id="disk-log"></div>
+      </section>
+    </div>`;
+  // 空间下拉：个人空间 + 有权限的空间
+  const sel = document.getElementById("disk-space") as HTMLSelectElement;
+  const spaces: { id: string; name: string }[] = [];
+  try {
+    const pid = await api.diskPersonalSpaceId();
+    spaces.push({ id: pid, name: "个人空间" });
+  } catch (e) {
+    document.getElementById("disk-tree")!.innerHTML =
+      `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
+    return;
+  }
+  try {
+    const rows = await api.getSpaces("all");
+    for (const r of rows) if (r.id && r.id !== spaces[0].id) spaces.push({ id: r.id, name: r.name || "未命名空间" });
+  } catch {
+    /* 空间列表拉取失败不阻塞：个人空间仍可用 */
+  }
+  diskSt.spaces = spaces;
+  sel.innerHTML = spaces.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+  // 恢复上次目标所在空间，否则个人空间
+  const last = diskLastTarget();
+  sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
+  sel.addEventListener("change", () => void diskLoadSpace(sel.value));
+  document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value, true));
+  document.getElementById("disk-up")!.addEventListener("click", () => {
+    if (!diskSt.selected) return toast("请先在左侧选择目录");
+    void diskUploadTo(diskSt.selected);
+  });
+  document.getElementById("disk-dl-sel")!.addEventListener("click", () => {
+    if (!diskSt.checked.size) return toast("请先勾选要下载的文件");
+    const items: DiskDlItem[] = [];
+    for (const id of diskSt.checked) {
+      const n = diskSt.flat.get(id);
+      if (n) items.push({ articleId: n.id, name: diskFileName(n), relDir: "" });
+    }
+    void diskDownload(items);
+  });
+  document.getElementById("disk-dl-all")!.addEventListener("click", () => {
+    if (!diskSt.selected) return toast("请先在左侧选择目录");
+    void (async () => {
+      try {
+        await diskEnsureSubtree(diskSt.selected!);
+        const items = diskSubtreeFileItems(diskSt.selected!.id);
+        if (!items.length) return toast("该目录下没有文件型文档");
+        void diskDownload(items);
+      } catch (e) {
+        toast(`获取目录内容失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
+      }
+    })();
+  });
+  await diskLoadSpace(sel.value);
+}
+
+function diskFileName(n: DiskNode): string {
+  const base = sanitizeDiskName(n.name);
+  const ext = (n.subFileType || "").replace(/^\./, "");
+  if (!ext || base.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) return base;
+  return `${base}.${ext}`;
+}
+
+function sanitizeDiskName(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, "_");
+}
+
+/** 加载空间：拉根树并默认选中第一个目录 */
+async function diskLoadSpace(spaceId: string, fresh = false): Promise<void> {
+  diskSt.spaceId = spaceId;
+  diskSt.loaded.clear();
+  diskSt.children.clear();
+  diskSt.flat.clear();
+  diskSt.expanded.clear();
+  diskSt.checked.clear();
+  if (fresh) diskSt.roots = [];
+  try {
+    if (!diskSt.roots.length) diskSt.roots = await api.diskTree(spaceId);
+  } catch (e) {
+    document.getElementById("disk-tree")!.innerHTML =
+      `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
+    return;
+  }
+  for (const n of diskSt.roots) diskSt.flat.set(n.id, n);
+  diskRenderTree();
+  const first = diskSt.roots[0];
+  if (first) await diskSelectSubject(first, true);
+  else document.getElementById("disk-list")!.innerHTML = `<div class="empty">该空间没有目录</div>`;
+}
+
+/** 拉取节点子列表（B/S 返回整树扁平列表；此处只取直接子节点，全量灌入 flat） */
+async function diskFetchChildren(subjectId: string): Promise<DiskNode[]> {
+  if (diskSt.loaded.has(subjectId)) return diskSt.children.get(subjectId) || [];
+  const all = await api.diskNodes(diskSt.spaceId, subjectId, "subject");
+  for (const n of all) diskSt.flat.set(n.id, n);
+  const kids = all.filter((n) => n.pid === subjectId);
+  diskSt.children.set(subjectId, kids);
+  diskSt.loaded.add(subjectId);
+  return kids;
+}
+
+/** 递归确保子树已灌入 flat（下载整个目录前调用） */
+async function diskEnsureSubtree(root: DiskNode): Promise<void> {
+  await diskFetchChildren(root.id);
+  for (const n of diskSt.children.get(root.id) || []) {
+    if (n.nodeType === "subject") await diskEnsureSubtree(n);
+  }
+}
+
+/** 当前目录子树内的全部 FILE 文章（relDir 由祖先链构建） */
+function diskSubtreeFileItems(rootId: string): DiskDlItem[] {
+  const out: DiskDlItem[] = [];
+  for (const n of diskSt.flat.values()) {
+    if (n.nodeType !== "article" || n.subtype !== "FILE") continue;
+    const chain = n.pids ? n.pids.split(",") : [];
+    const idx = chain.indexOf(rootId);
+    if (idx < 0) continue;
+    const dirs = chain
+      .slice(idx + 1, Math.max(idx + 1, chain.length - 1))
+      .map((id) => diskSt.flat.get(id)?.name || "")
+      .filter(Boolean);
+    out.push({ articleId: n.id, name: diskFileName(n), relDir: dirs.join("/") });
+  }
+  return out;
+}
+
+function diskRenderTree(): void {
+  const tree = document.getElementById("disk-tree");
+  if (!tree) return;
+  const parts: string[] = [];
+  const walk = (nodes: DiskNode[], depth: number) => {
+    for (const n of nodes) {
+      if (n.nodeType !== "subject") continue;
+      const kids = diskSt.children.get(n.id);
+      const hasKids = diskSt.loaded.has(n.id) ? !!kids?.length : !n.isLeaf;
+      const open = diskSt.expanded.has(n.id);
+      const selCls = diskSt.selected?.id === n.id ? " sel" : "";
+      parts.push(
+        `<div class="disk-tree-item${selCls}" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
+          `<span class="tw">${hasKids ? (open ? "▾" : "▸") : ""}</span>` +
+          `<span class="tname">${esc(n.name)}</span></div>`,
+      );
+      if (open && kids) {
+        walk(kids.filter((k) => k.nodeType === "subject"), depth + 1);
+      }
+    }
+  };
+  walk(diskSt.roots, 0);
+  tree.innerHTML = parts.join("") || `<div class="empty">没有目录</div>`;
+  tree.querySelectorAll<HTMLElement>(".disk-tree-item").forEach((el) => {
+    el.addEventListener("click", (ev) => {
+      const id = el.dataset.id || "";
+      const node = diskSt.flat.get(id);
+      if (!node) return;
+      // 点箭头 = 展开/收起；点名称 = 选中
+      const isToggle = (ev.target as HTMLElement).classList.contains("tw") && diskSt.expanded.has(id);
+      if (diskSt.expanded.has(id) && isToggle) {
+        diskSt.expanded.delete(id);
+        diskRenderTree();
+        return;
+      }
+      diskSt.expanded.add(id);
+      void diskSelectSubject(node, false);
+    });
+  });
+}
+
+/** 选中目录：加载子节点 + 渲染右侧列表 */
+async function diskSelectSubject(node: DiskNode, force = false): Promise<void> {
+  diskSt.selected = node;
+  diskSt.checked.clear();
+  try {
+    if (force) {
+      diskSt.loaded.delete(node.id);
+      diskSt.children.delete(node.id);
+    }
+    await diskFetchChildren(node.id);
+  } catch (e) {
+    document.getElementById("disk-list")!.innerHTML =
+      `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
+    diskRenderTree();
+    return;
+  }
+  diskRenderTree();
+  diskRenderList();
+}
+
+function diskCrumbText(node: DiskNode): string {
+  const chain = (node.pids ? node.pids.split(",") : []).filter((id) => id !== node.id);
+  const names = chain.map((id) => diskSt.flat.get(id)?.name).filter(Boolean) as string[];
+  names.push(node.name);
+  return names.join(" / ");
+}
+
+function diskRenderList(): void {
+  const node = diskSt.selected;
+  const list = document.getElementById("disk-list");
+  if (!node || !list) return;
+  const crumb = document.getElementById("disk-crumb");
+  if (crumb) crumb.textContent = diskCrumbText(node);
+  const kids = diskSt.children.get(node.id) || [];
+  const subjects = kids.filter((k) => k.nodeType === "subject");
+  const articles = kids.filter((k) => k.nodeType === "article");
+  const fmtDate = (ms: number) => (ms ? new Date(ms).toLocaleDateString() : "");
+  const typeChip = (t: string) =>
+    `<span class="disk-chip t-${esc(t.toLowerCase())}">${esc(t === "FILE" ? "文件" : t === "EXCEL" ? "表格" : t === "DOC" ? "文档" : t === "RICHTEXT" ? "富文本" : t)}</span>`;
+  const rows = subjects
+    .map(
+      (s) => `<div class="disk-row is-dir" data-id="${esc(s.id)}" title="打开目录">
+        <span class="d-ico">📁</span><span class="d-name">${esc(s.name)}</span><span class="d-meta">目录</span></div>`,
+    )
+    .concat(
+      articles.map((a) => {
+        const isFile = a.subtype === "FILE";
+        const chk = diskSt.checked.has(a.id);
+        return `<div class="disk-row" data-id="${esc(a.id)}">
+        ${isFile ? `<input type="checkbox" class="d-chk" data-id="${esc(a.id)}" ${chk ? "checked" : ""} title="勾选下载" />` : `<span class="d-chk-sp"></span>`}
+        <span class="d-ico">${isFile ? "📄" : "📝"}</span>
+        <span class="d-name" title="${esc(a.name)}">${esc(a.name)}</span>
+        ${typeChip(a.subtype)}
+        <span class="d-meta">${fmtDate(a.updateTime)}</span></div>`;
+      }),
+    );
+  list.innerHTML =
+    rows.join("") || `<div class="empty">目录为空（可点右上「↑ 上传」传文件）</div>`;
+  list.querySelectorAll<HTMLElement>(".disk-row.is-dir").forEach((el) =>
+    el.addEventListener("click", () => {
+      const n = diskSt.flat.get(el.dataset.id || "");
+      if (n) {
+        diskSt.expanded.add(n.id);
+        void diskSelectSubject(n);
+      }
+    }),
+  );
+  list.querySelectorAll<HTMLInputElement>(".d-chk").forEach((el) =>
+    el.addEventListener("change", () => {
+      if (el.checked) diskSt.checked.add(el.dataset.id || "");
+      else diskSt.checked.delete(el.dataset.id || "");
+    }),
+  );
+}
+
+async function diskPickFiles(): Promise<string[]> {
+  if (diskSt.pending.length) {
+    const p = diskSt.pending;
+    diskSt.pending = [];
+    return p;
+  }
+  const picked = await invoke<string[] | null>("plugin:dialog|open", {
+    options: { multiple: true, title: "选择要上传的文件" },
+  });
+  return Array.isArray(picked) ? picked : [];
+}
+
+async function diskPickDir(): Promise<string> {
+  const dir = await invoke<string | null>("plugin:dialog|open", {
+    options: { directory: true, title: "选择保存位置" },
+  });
+  return typeof dir === "string" ? dir : "";
+}
+
+/** 上传到指定目录（记忆为该空间的默认目标；文件来源：右键带入 / 文件对话框） */
+async function diskUploadTo(subject: DiskNode): Promise<void> {
+  const paths = await diskPickFiles();
+  if (!paths.length) return;
+  localStorage.setItem(
+    diskTargetKey(),
+    JSON.stringify({ spaceId: diskSt.spaceId, subjectId: subject.id, name: subject.name }),
+  );
+  toast(`开始上传 ${paths.length} 个文件到「${subject.name}」`);
+  try {
+    await api.diskUploadFiles(diskSt.spaceId, subject.id, paths);
+  } catch (e) {
+    toast(`上传启动失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
+  }
+}
+
+/** 批量下载：选目标目录 → 调 Rust 队列（进度走 disk-progress 事件） */
+async function diskDownload(items: DiskDlItem[]): Promise<void> {
+  let dest: string;
+  try {
+    dest = await diskPickDir();
+  } catch {
+    return;
+  }
+  if (!dest) return;
+  try {
+    await api.diskDownloadFiles(items, dest);
+    toast(`开始下载 ${items.length} 个文件`);
+  } catch (e) {
+    toast(`下载启动失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
+  }
 }
 
 // ---------------- 列表搜索框（移动端风格） ----------------
@@ -2324,6 +2727,14 @@ function renderProfile(content: HTMLElement) {
       <label class="switch set-side"><input type="checkbox" id="set-nav-labels" ${s.nav_show_labels ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
     <div class="set-row">
+      ${ico("#0ea5e9", `<path d="M7.5 15.5a3.3 3.3 0 0 1-.3-6.6 4.4 4.4 0 0 1 8.5-.9 3.4 3.4 0 0 1 1.4 6.5"/><path d="M12 17.5v-5.2M9.8 14.3l2.2-2.2 2.2 2.2"/>`)}
+      <div class="set-main">
+        <div class="set-title">资源管理器右键上传菜单</div>
+        <div class="set-desc">在文件右键菜单加入「上传到巨鹏个人空间」，支持多选文件；上传目标为网盘页上次使用的目录（Windows 11 位于"显示更多选项"二级菜单）</div>
+      </div>
+      <label class="switch set-side"><input type="checkbox" id="set-ctxmenu" /><span class="track"></span><span class="thumb"></span></label>
+    </div>
+    <div class="set-row">
       ${ico("#f43f5e", `<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>`)}
       <div class="set-main">
         <div class="set-title">勿扰时段</div>
@@ -2440,6 +2851,21 @@ function renderProfile(content: HTMLElement) {
     applyNavLabels();
     void api.saveSettings(settings).catch(() =>
       toast("导航栏名称设置保存失败，请点击「保存设置」重试"),
+    );
+  });
+  // 「资源管理器右键上传菜单」开关：状态从注册表读，切换即注册/注销（HKCU，免管理员）
+  void api.diskContextMenuStatus().then((ok) => {
+    const el = document.getElementById("set-ctxmenu") as HTMLInputElement | null;
+    if (el) el.checked = !!ok;
+  });
+  document.getElementById("set-ctxmenu")!.addEventListener("change", (e) => {
+    const enable = (e.target as HTMLInputElement).checked;
+    void api.diskRegisterContextMenu(enable).then(
+      () => toast(enable ? "已注册右键上传菜单（新开的右键菜单生效）" : "已移除右键上传菜单"),
+      () => {
+        toast("右键菜单设置失败（仅支持 Windows）");
+        (e.target as HTMLInputElement).checked = !enable;
+      },
     );
   });
   // 「迷你速览条」拨动即生效：创建/关闭右缘常置小窗，状态存 localStorage（重启恢复）

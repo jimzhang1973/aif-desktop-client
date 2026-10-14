@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod db;
+mod disk;
 mod hotkey;
 mod poller;
 mod sm4;
@@ -10,7 +11,7 @@ mod tray;
 
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::state::AppState;
@@ -18,6 +19,7 @@ use crate::state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_log::Builder::new().build())
         // 全局快捷键：按下即切换主窗口显示/隐藏（注册内容见 settings.hotkey）
@@ -34,9 +36,14 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // 第二实例启动时聚焦已存在的待办窗（同样要抢前台）
             tray::raise_main(app);
+            // 资源管理器右键「上传到个人空间」：提取 --upload 文件路径转发主窗网盘页
+            let paths = disk::extract_upload_paths(&argv);
+            if !paths.is_empty() {
+                let _ = app.emit("disk-upload-request", paths);
+            }
         }))
         // 关闭窗口 ≠ 退出：主窗隐藏到托盘，托盘菜单「退出」才真正退出
         .on_window_event(|window, event| {
@@ -127,6 +134,14 @@ pub fn run() {
             commands::get_ops_apps,
             commands::get_ai_agents,
             commands::get_quick_entries,
+            disk::disk_article_meta,
+            disk::disk_context_menu_status,
+            disk::disk_download_files,
+            disk::disk_nodes,
+            disk::disk_personal_space_id,
+            disk::disk_register_context_menu,
+            disk::disk_tree,
+            disk::disk_upload_files,
             commands::close_webview_self,
             commands::open_external,
             commands::set_autostart,

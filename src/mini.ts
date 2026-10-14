@@ -78,7 +78,8 @@ function paint(msg: number, todo: number) {
 }
 
 async function refresh() {
-  void detectOpsProduct();
+  // 必须先完成产品检测：alertApps 依赖 opsProduct 判定
+  await detectOpsProduct();
   paint(unreadCount(), await todoCount());
   // 快捷功能数量：主窗加载列表后写入共享 localStorage（aif_quick_count）
   const qc = Number(localStorage.getItem("aif_quick_count") || "0");

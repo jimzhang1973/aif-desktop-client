@@ -87,6 +87,8 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   align-items: center; justify-content: center; gap: 2px; padding: 0;
   transition: background 0.15s;
 }
+/* hidden 属性必须显式压制 display:flex（作者样式会覆盖 UA 的 [hidden] 规则） */
+.m-btn[hidden] { display: none !important; }
 /* 打开面板：浅灰实体按钮，一眼可辨「这是按钮」 */
 #m-panel {
   height: 42px; background: #a8aebb;

@@ -1065,7 +1065,7 @@ input:focus, select:focus { border-color: var(--accent); }
 /* ==================== 网盘（个人空间目录浏览 / 批量上传下载） ==================== */
 .disk-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .disk-select { margin: 8px 8px 4px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 13px; color: inherit; }
-.disk-bar .disk-select { margin: 0; width: 144px; flex: none; }
+.disk-bar .disk-select { margin: 0; width: 120px; flex: none; }
 .disk-tree { flex: 1; overflow: auto; padding: 4px 4px 12px; min-height: 0; }
 .disk-tree-item { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; user-select: none; }
 .disk-tree-item:hover { background: rgba(14, 165, 233, 0.08); }
@@ -1077,7 +1077,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-tree-item .d-ico { flex: none; font-size: 13px; line-height: 0; }
 .disk-tree-item .d-ico svg { width: 17px; height: 17px; display: block; }
 .disk-tree-item.is-file .tname { font-weight: 400; color: var(--text-2, #444); }
-.disk-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.disk-bar { display: flex; align-items: center; gap: 2px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .disk-hint { font-size: 12.5px; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 12.5px; cursor: pointer; color: inherit; white-space: nowrap; }
 .disk-btn:hover { border-color: #0ea5e9; color: #0284c7; }

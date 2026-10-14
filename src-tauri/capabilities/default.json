@@ -19,6 +19,8 @@
     "core:webview:default",
     "core:event:default",
     "notification:default",
-    "log:default"
+    "log:default",
+    "allow-close-webview-self",
+    "allow-tab-close-self"
   ]
 }

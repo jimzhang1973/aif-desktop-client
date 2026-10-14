@@ -1,5 +1,17 @@
 fn main() {
-    tauri_build::build();
+    // tauri 2.x ACL 规则：remote 来源的 invoke 一律要过 ACL（webview/mod.rs:
+    // 「remote content can never reach custom commands unless an explicit remote
+    // capability has been configured」），而 app 自定义命令只有在 build 时用
+    // AppManifest 注册、生成 allow-$command 权限、并被 capabilities 引用后，
+    // 才会进入 allowed_commands。因此远程 B/S 页面要调的命令必须在此登记，
+    // 并在 capabilities/default.json 的 permissions 里加 "allow-$command"。
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
+            "close_webview_self", // BS_WINDOW_SHIM：window.close → 宿主关闭/隐藏
+            "tab_close_self",     // close_capture_script：window.close → 关标签/弹窗
+        ])),
+    )
+    .expect("failed to run tauri-build");
 
     // 关键：tauri_build::build() 输出了自己的 cargo:rerun-if-changed（conf/icons 等），
     // 一旦存在任何 rerun-if 指令，cargo 便不再「包内有变化就重跑 build script」——

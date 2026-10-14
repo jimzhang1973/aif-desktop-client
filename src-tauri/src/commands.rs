@@ -2034,8 +2034,8 @@ pub struct AiAgent {
     pub icon: String,
 }
 
-/// B/S 主页 AI 问答入口：POST ai/agent/authorized.htm 返回当前账号
-/// 授权的智能体列表（[{id,name,description,icon}]）；前端拼
+/// B/S 主页 AI 问答入口：获取当前账号授权的智能体列表（[{id,name,description,icon}]），
+/// 数据源先新版 persona 后旧版 agent（见函数体内注释）；前端拼
 /// ai/chat/index.htm?aiAgentId=<id> 在受控 webview 中打开问答页
 /// （B/S 原生行为：top.openNewTab(url, 'AI问答（name）', 'agentic_agent_'+id)）
 #[tauri::command]
@@ -2049,18 +2049,15 @@ pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgen
     };
     let session = auth::load_session().filter(|s| !s.is_empty()).ok_or("未登录")?;
 
-    // 数据源探测顺序：
-    // 1) /{产品根}/ai/agent/authorized.htm —— 新版智能体授权接口（DCP 为 /DCP/ai/agent/**）
-    // 2) /AIF/ai/persona/agent/authorized.htm —— 旧版接口（B/S 原生 matters.html 写死，
-    //    AI 模块仅部署在 AIF 域下；新版接口 404/非成功时自动回退）
+    // 数据源探测顺序（2026-10-14 与用户确认的版本语义）：
+    // 1) /{产品根}/ai/persona/agent/authorized.htm —— 新版接口（AIF 部署；实测 AIF 会话 200）
+    // 2) /{产品根}/ai/agent/authorized.htm —— 旧版接口（DCP 部署；实测 DCP 会话 200，18 个智能体）
+    // 两产品各只部署其一：先试新版，接口不存在（404 等非成功）自动回退旧版；
+    // 成功返回的数组（含空）视为权威结果，直接采用不再兜底。
     let mut last_err = String::new();
-    // 数据源探测顺序：
-    // 1) /{产品根}/ai/agent/authorized.htm —— 新版智能体授权接口（DCP 为 /DCP/ai/agent/**，
-    //    实测 POST/GET 均可，DCP 会话下返回 18 个智能体）
-    // 2) /AIF/ai/persona/agent/authorized.htm —— 旧版接口（B/S 原生 matters.html 写死）
     for (src_root, path) in [
+        (root.clone(), format!("/{root}/ai/persona/agent/authorized.htm")),
         (root.clone(), format!("/{root}/ai/agent/authorized.htm")),
-        ("AIF".to_string(), "/AIF/ai/persona/agent/authorized.htm".to_string()),
     ] {
         let url = format!("{base}{path}");
         match state
@@ -2112,11 +2109,8 @@ pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgen
                         })
                         .filter(|a| !a.id.is_empty())
                         .collect();
-                    // 拿到非空列表即认为该数据源有效（空数组继续尝试下一数据源）
-                    if !agents.is_empty() {
-                        return Ok(agents);
-                    }
-                    last_err = format!("{path} 返回空列表");
+                    // 拿到合法数组即返回：空数组 = 账号无授权智能体，也是权威结果，不再兜底
+                    return Ok(agents);
                 } else {
                     last_err = format!("{path} 数据格式异常（非数组）");
                 }

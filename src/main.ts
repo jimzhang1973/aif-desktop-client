@@ -1168,6 +1168,9 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.checked.clear();
   diskSt.unchecked.clear();
   diskSt.roots = [];
+  // 重载空间时清掉上一轮的失败日志（成功日志保留），避免陈旧错误在刷新成功后仍残留
+  const logEl = document.getElementById("disk-log");
+  if (logEl) logEl.querySelectorAll(".disk-log-row.bad").forEach((r) => r.remove());
   try {
     diskSt.roots = await api.diskTree(spaceId);
   } catch (e) {

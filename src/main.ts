@@ -1016,12 +1016,12 @@ const diskSt = {
 let diskUploadSubjectId = "";
 
 // ---------------- 传输管理器（右侧抽屉：进行中 + 历史可回看） ----------------
-type TransferItem = { name: string; ok: boolean; msg: string };
+type TransferItem = { name: string; ok: boolean; msg: string; muted?: boolean };
 type TransferMeta = { raw?: DiskDlItem[]; dest?: string; subjectId?: string };
 type TransferTask = {
   id: string;
-  kind: "upload" | "download";
-  target: string; // 下载=本地目录；上传=目标目录名
+  kind: "upload" | "download" | "delete";
+  target: string; // 下载=本地目录；上传/删除=目标目录名/项数
   total: number;
   done: number;
   status: "running" | "done" | "failed" | "partial";
@@ -1030,7 +1030,7 @@ type TransferTask = {
   meta: TransferMeta;
 };
 let diskTransfers: TransferTask[] = [];
-const diskActiveTask: Record<"upload" | "download", string> = { upload: "", download: "" };
+const diskActiveTask: Record<"upload" | "download" | "delete", string> = { upload: "", download: "", delete: "" };
 
 function diskTransferLoad(): void {
   try {
@@ -1048,7 +1048,7 @@ function diskTransferPersist(): void {
     /* 忽略持久化失败 */
   }
 }
-function diskTransferStart(kind: "upload" | "download", target: string, total: number, meta: TransferMeta = {}): TransferTask {
+function diskTransferStart(kind: "upload" | "download" | "delete", target: string, total: number, meta: TransferMeta = {}): TransferTask {
   const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta };
   diskTransfers.unshift(task);
   diskActiveTask[kind] = task.id;
@@ -1057,11 +1057,11 @@ function diskTransferStart(kind: "upload" | "download", target: string, total: n
   diskTransferPersist();
   return task;
 }
-function diskTransferFind(kind: "upload" | "download"): TransferTask | undefined {
+function diskTransferFind(kind: "upload" | "download" | "delete"): TransferTask | undefined {
   const id = diskActiveTask[kind];
   return id ? diskTransfers.find((t) => t.id === id) : undefined;
 }
-function diskTransferItem(kind: "upload" | "download", name: string, ok: boolean, msg: string, done?: number, total?: number): void {
+function diskTransferItem(kind: "upload" | "download" | "delete", name: string, ok: boolean, msg: string, done?: number, total?: number): void {
   const t = diskTransferFind(kind);
   if (!t) return;
   const ex = t.items.find((i) => i.name === name);
@@ -1076,18 +1076,19 @@ function diskTransferItem(kind: "upload" | "download", name: string, ok: boolean
   diskTransferBadge();
   diskTransferRender();
 }
-function diskTransferFinish(kind: "upload" | "download", total: number): void {
+function diskTransferFinish(kind: "upload" | "download" | "delete", total: number): void {
   const t = diskTransferFind(kind);
   diskActiveTask[kind] = "";
   if (!t) return;
   t.total = total || t.total;
   t.done = t.total;
-  const failed = t.items.filter((i) => !i.ok).length;
-  t.status = failed === 0 ? "done" : failed >= t.items.length ? "failed" : "partial";
+  const failed = t.items.filter((i) => !i.ok && !i.muted).length;
+  t.status = failed === 0 ? "done" : failed >= t.items.filter((i) => !i.muted).length ? "failed" : "partial";
   if (!t.items.length) t.status = "failed"; // 从未收到逐文件事件（启动即失败）归为失败
   diskTransferBadge();
   diskTransferRender();
-  if (failed > 0) toast(`「${t.kind === "download" ? "下载" : "上传"}」完成，${failed} 个失败`);
+  const label = t.kind === "download" ? "下载" : t.kind === "upload" ? "上传" : "删除";
+  if (failed > 0) toast(`「${label}」完成，${failed} 个失败`);
   diskTransferPersist();
 }
 function diskTransferFailStart(id: string, err: string): void {
@@ -1126,13 +1127,17 @@ function diskTransferRender(): void {
             : t.status === "failed"
               ? "失败"
               : "进行中…";
-      const arrow = t.kind === "download" ? "↓" : "↑";
-      const target = t.kind === "download" ? `下载到 ${t.target}` : `上传到 ${t.target}`;
+      const arrow = t.kind === "download" ? "↓" : t.kind === "upload" ? "↑" : "🗑";
+      const target =
+        t.kind === "download" ? `下载到 ${t.target}` : t.kind === "upload" ? `上传到 ${t.target}` : `删除 ${t.target}`;
       const itemsHtml = t.items
-        .map(
-          (i) =>
-            `<li class="${i.ok ? "ok" : "bad"}"><span class="tf-name">${esc(i.name)}</span>${i.msg && !i.ok ? `<span class="tf-msg">：${esc(i.msg)}</span>` : ""}<span class="tf-conc" title="${i.ok ? "成功" : "失败"}">${i.ok ? "✓" : "✗"}</span></li>`,
-        )
+        .map((i) => {
+          const cls = i.muted ? "muted" : i.ok ? "ok" : "bad";
+          const conc = i.muted ? "—" : i.ok ? "✓" : "✗";
+          const title = i.muted ? "已排除" : i.ok ? "成功" : "失败";
+          const msgHtml = !i.muted && i.msg && !i.ok ? `<span class="tf-msg">：${esc(i.msg)}</span>` : "";
+          return `<li class="${cls}"><span class="tf-name">${esc(i.name)}</span>${msgHtml}<span class="tf-conc" title="${title}">${conc}</span></li>`;
+        })
         .join("");
       const retryBtn =
         t.kind === "download" && t.meta.raw && failed.length
@@ -1843,6 +1848,10 @@ async function diskDeleteSelected(): Promise<void> {
     `将删除 ${files.length} 个文件、${dirs.length} 个目录（在线文档 ${onlineDocs.length} 个已排除，不删除）。此操作不可恢复，确定继续？`,
   );
   if (!ok) return;
+  // 登记传输管理器任务（删除=一次性同步，无逐文件进度事件，结束后直接结算）
+  const total = files.length + dirs.length + onlineDocs.length;
+  const task = diskTransferStart("delete", `${files.length + dirs.length} 项`, total, {});
+  const nameOf = (id: string) => diskSt.flat.get(id)?.name ?? id;
   try {
     const res = await api.diskDelete(
       files.map((f) => f.id),
@@ -1850,6 +1859,11 @@ async function diskDeleteSelected(): Promise<void> {
     );
     // 刷新树（被删节点消失）；刷新发生在记录结果之前，故下方日志不会被清掉
     await diskLoadSpace(diskSt.spaceId);
+    // 逐条结论（文件/目录成功 ✓ / 失败 ✗）
+    for (const it of res.items) task.items.push({ name: nameOf(it.id), ok: it.ok, msg: it.msg ?? "" });
+    // 在线文档：标记「已排除」（muted，不计入失败）
+    for (const o of onlineDocs) task.items.push({ name: o.name, ok: false, msg: "在线文档(已排除)", muted: true });
+    diskTransferFinish("delete", task.items.length);
     if (onlineDocs.length) diskLog(`在线文档不允许删除：${onlineDocs.map((o) => o.name).join("、")}`, false);
     if (res.failed.length) diskLog(`删除部分失败：${res.failed.join("；")}`, false);
     diskLog(`删除完成：文件 ${res.deletedFiles} 个、目录 ${res.deletedDirs} 个`, true);
@@ -1857,6 +1871,7 @@ async function diskDeleteSelected(): Promise<void> {
       `删除完成（文件 ${res.deletedFiles}、目录 ${res.deletedDirs}${res.failed.length ? `，${res.failed.length} 个失败` : ""}）`,
     );
   } catch (e) {
+    diskTransferFailStart(task.id, String(e));
     diskLog(`删除失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
     toast("删除失败，详见日志");
   }

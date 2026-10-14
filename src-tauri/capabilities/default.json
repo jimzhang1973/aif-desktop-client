@@ -85,6 +85,7 @@
       "allow-tab-restore-session",
       "allow-disk-article-meta",
       "allow-disk-context-menu-status",
+      "allow-disk-delete",
       "allow-disk-download-files",
       "allow-disk-nodes",
       "allow-disk-personal-space-id",

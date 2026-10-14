@@ -293,11 +293,20 @@ export interface DiskDlItem {
   subtype: string;
 }
 
+/** 删除结果（逐条明细，用于传输管理器 ✓✗ 结论列） */
+export interface DiskDeleteItem {
+  id: string;
+  kind: "file" | "dir";
+  ok: boolean;
+  msg: string | null;
+}
+
 /** 删除结果汇总（先删文件，后删目录；在线文档由前端调用前排除） */
 export interface DiskDeleteResult {
   deletedFiles: number;
   deletedDirs: number;
   failed: string[];
+  items: DiskDeleteItem[];
 }
 
 export function on<T>(event: string, cb: (p: T) => void): Promise<UnlistenFn> {

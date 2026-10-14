@@ -736,10 +736,19 @@ pub fn disk_upload_files(
 
 /// 删除结果汇总
 #[derive(serde::Serialize)]
+pub struct DiskDeleteItem {
+    pub id: String,
+    pub kind: String, // "file" | "dir"
+    pub ok: bool,
+    pub msg: Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub struct DiskDeleteResult {
     pub deleted_files: u32,
     pub deleted_dirs: u32,
     pub failed: Vec<String>,
+    pub items: Vec<DiskDeleteItem>,
 }
 
 /// 删除选中的文件（文章）与目录（subject）：先删文件，再删目录。
@@ -765,10 +774,12 @@ pub async fn disk_delete(
         deleted_files: 0,
         deleted_dirs: 0,
         failed: Vec::new(),
+        items: Vec::new(),
     };
 
     // 1) 先删文件（文章）：逐 id POST，检查响应 code==200
     for id in &article_ids {
+        let k = "file".to_string();
         let url = format!("{article_del}");
         match client
             .post(&url)
@@ -779,7 +790,9 @@ pub async fn disk_delete(
         {
             Ok(resp) => {
                 if !resp.status().is_success() {
-                    res.failed.push(format!("文件 {id}: HTTP {}", resp.status().as_u16()));
+                    let m = format!("HTTP {}", resp.status().as_u16());
+                    res.failed.push(format!("文件 {id}: {m}"));
+                    res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
                     continue;
                 }
                 let text = resp.text().await.unwrap_or_default();
@@ -788,6 +801,7 @@ pub async fn disk_delete(
                         let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(200);
                         if code == 200 {
                             res.deleted_files += 1;
+                            res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: true, msg: None });
                         } else {
                             let msg = v
                                 .get("msg")
@@ -795,20 +809,28 @@ pub async fn disk_delete(
                                 .unwrap_or("未知错误")
                                 .to_string();
                             res.failed.push(format!("文件 {id}: {msg}"));
+                            res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(msg) });
                         }
                     }
                     Err(_) => {
                         let t = text.chars().take(120).collect::<String>();
-                        res.failed.push(format!("文件 {id}: 响应解析失败（可能端点不对）: {t}"));
+                        let m = format!("响应解析失败（可能端点不对）: {t}");
+                        res.failed.push(format!("文件 {id}: {m}"));
+                        res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
                     }
                 }
             }
-            Err(e) => res.failed.push(format!("文件 {id}: {e}")),
+            Err(e) => {
+                let m = e.to_string();
+                res.failed.push(format!("文件 {id}: {m}"));
+                res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
+            }
         }
     }
 
     // 2) 再删目录（subject）
     for id in &subject_ids {
+        let k = "dir".to_string();
         let url = format!("{subject_del}");
         match client
             .post(&url)
@@ -819,7 +841,9 @@ pub async fn disk_delete(
         {
             Ok(resp) => {
                 if !resp.status().is_success() {
-                    res.failed.push(format!("目录 {id}: HTTP {}", resp.status().as_u16()));
+                    let m = format!("HTTP {}", resp.status().as_u16());
+                    res.failed.push(format!("目录 {id}: {m}"));
+                    res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
                     continue;
                 }
                 let text = resp.text().await.unwrap_or_default();
@@ -828,6 +852,7 @@ pub async fn disk_delete(
                         let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(200);
                         if code == 200 {
                             res.deleted_dirs += 1;
+                            res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: true, msg: None });
                         } else {
                             let msg = v
                                 .get("msg")
@@ -835,15 +860,22 @@ pub async fn disk_delete(
                                 .unwrap_or("未知错误")
                                 .to_string();
                             res.failed.push(format!("目录 {id}: {msg}"));
+                            res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(msg) });
                         }
                     }
                     Err(_) => {
                         let t = text.chars().take(120).collect::<String>();
-                        res.failed.push(format!("目录 {id}: 响应解析失败（可能端点不对）: {t}"));
+                        let m = format!("响应解析失败（可能端点不对）: {t}");
+                        res.failed.push(format!("目录 {id}: {m}"));
+                        res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
                     }
                 }
             }
-            Err(e) => res.failed.push(format!("目录 {id}: {e}")),
+            Err(e) => {
+                let m = e.to_string();
+                res.failed.push(format!("目录 {id}: {m}"));
+                res.items.push(DiskDeleteItem { id: id.clone(), kind: k, ok: false, msg: Some(m) });
+            }
         }
     }
 

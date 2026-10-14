@@ -1584,9 +1584,10 @@ async function diskToggleCheck(id: string, on: boolean): Promise<void> {
     }
     const under = diskCollectUnder(node.id);
     for (const k of under) diskSt.unchecked.delete(k.id);
+    // 级联勾选：父目录下的全部子目录与文档（含在线文档）一并选中；
+    // 在线文档是否可下载由 diskCheckedDlItems 的 dlType 白名单决定（不可下者给出详情页提示）
     for (const k of under) {
-      if (k.nodeType === "article" && k.subtype === "FILE") diskSt.checked.add(k.id);
-      else if (k.nodeType === "subject") diskSt.checked.add(k.id);
+      if (k.nodeType === "subject" || k.nodeType === "article") diskSt.checked.add(k.id);
     }
   } else {
     for (const k of diskCollectUnder(node.id)) diskSt.checked.delete(k.id);

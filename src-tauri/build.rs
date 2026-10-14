@@ -1,14 +1,76 @@
 fn main() {
     // tauri 2.x ACL 规则：remote 来源的 invoke 一律要过 ACL（webview/mod.rs:
     // 「remote content can never reach custom commands unless an explicit remote
-    // capability has been configured」），而 app 自定义命令只有在 build 时用
-    // AppManifest 注册、生成 allow-$command 权限、并被 capabilities 引用后，
-    // 才会进入 allowed_commands。因此远程 B/S 页面要调的命令必须在此登记，
-    // 并在 capabilities/default.json 的 permissions 里加 "allow-$command"。
+    // capability has been configured」），app 自定义命令只有在此用 AppManifest
+    // 注册、生成 allow-$command 权限并被 capabilities 引用后，才进 allowed_commands。
+    // 注意：一旦注册 AppManifest，本地 invoke 也走 ACL——所以清单必须覆盖全部命令。
+    // 【维护约定】lib.rs invoke_handler 新增命令时，此数组与 capabilities/default.json
+    // 的 permissions（allow-<kebab-case>）两处都要同步追加，否则该命令全上下文被拒。
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
-            "close_webview_self", // BS_WINDOW_SHIM：window.close → 宿主关闭/隐藏
-            "tab_close_self",     // close_capture_script：window.close → 关标签/弹窗
+                "account_delete",
+                "account_list",
+                "account_save",
+                "capture_session",
+                "check_captcha_required",
+                "check_now",
+                "close_webview_self",
+                "debug_dump",
+                "debug_webview_rect",
+                "fire_snooze",
+                "get_ai_agents",
+                "get_app_version",
+                "get_captcha",
+                "get_credential_hint",
+                "get_docs",
+                "get_matters",
+                "get_message_history",
+                "get_messages",
+                "get_ops_apps",
+                "get_quick_entries",
+                "get_roles",
+                "get_settings",
+                "get_spaces",
+                "get_todos",
+                "get_user_info",
+                "is_logged_in",
+                "layout_full",
+                "layout_mini",
+                "login_local",
+                "login_qr",
+                "login_webview",
+                "logout",
+                "mark_todo_done",
+                "open_conversation",
+                "open_external",
+                "poll_qr",
+                "quit_app",
+                "reflow_main_webview",
+                "report_requests",
+                "save_settings",
+                "set_autostart",
+                "set_hotkey",
+                "set_mini_card_visible",
+                "switch_role",
+                "toggle_mini_bar",
+                "trace_invoke",
+                "try_auto_login",
+                "start",
+                "sync_tabs_on_resize",
+                "tab_activate",
+                "tab_bounds",
+                "tab_close",
+                "tab_close_all",
+                "tab_close_others",
+                "tab_close_self",
+                "tab_hide_all",
+                "tab_list_cmd",
+                "tab_navigate",
+                "tab_open",
+                "tab_reload",
+                "tab_report_title",
+                "tab_restore_all",
+                "tab_restore_session",
         ])),
     )
     .expect("failed to run tauri-build");

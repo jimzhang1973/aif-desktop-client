@@ -177,10 +177,310 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the account_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-account-delete",
+          "markdownDescription": "Enables the account_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the account_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-account-list",
+          "markdownDescription": "Enables the account_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the account_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-account-save",
+          "markdownDescription": "Enables the account_save command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the capture_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-capture-session",
+          "markdownDescription": "Enables the capture_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the check_captcha_required command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-captcha-required",
+          "markdownDescription": "Enables the check_captcha_required command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the check_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-now",
+          "markdownDescription": "Enables the check_now command without any pre-configured scope."
+        },
+        {
           "description": "Enables the close_webview_self command without any pre-configured scope.",
           "type": "string",
           "const": "allow-close-webview-self",
           "markdownDescription": "Enables the close_webview_self command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the debug_dump command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-debug-dump",
+          "markdownDescription": "Enables the debug_dump command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the debug_webview_rect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-debug-webview-rect",
+          "markdownDescription": "Enables the debug_webview_rect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the fire_snooze command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-fire-snooze",
+          "markdownDescription": "Enables the fire_snooze command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_ai_agents command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-ai-agents",
+          "markdownDescription": "Enables the get_ai_agents command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_app_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-app-version",
+          "markdownDescription": "Enables the get_app_version command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_captcha command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-captcha",
+          "markdownDescription": "Enables the get_captcha command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_credential_hint command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-credential-hint",
+          "markdownDescription": "Enables the get_credential_hint command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_docs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-docs",
+          "markdownDescription": "Enables the get_docs command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_matters command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-matters",
+          "markdownDescription": "Enables the get_matters command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_message_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-message-history",
+          "markdownDescription": "Enables the get_message_history command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_messages command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-messages",
+          "markdownDescription": "Enables the get_messages command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_ops_apps command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-ops-apps",
+          "markdownDescription": "Enables the get_ops_apps command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_quick_entries command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-quick-entries",
+          "markdownDescription": "Enables the get_quick_entries command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_roles command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-roles",
+          "markdownDescription": "Enables the get_roles command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-settings",
+          "markdownDescription": "Enables the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_spaces command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-spaces",
+          "markdownDescription": "Enables the get_spaces command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_todos command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-todos",
+          "markdownDescription": "Enables the get_todos command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_user_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-user-info",
+          "markdownDescription": "Enables the get_user_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the is_logged_in command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-is-logged-in",
+          "markdownDescription": "Enables the is_logged_in command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the layout_full command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-layout-full",
+          "markdownDescription": "Enables the layout_full command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the layout_mini command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-layout-mini",
+          "markdownDescription": "Enables the layout_mini command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the login_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-login-local",
+          "markdownDescription": "Enables the login_local command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the login_qr command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-login-qr",
+          "markdownDescription": "Enables the login_qr command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the login_webview command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-login-webview",
+          "markdownDescription": "Enables the login_webview command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the logout command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-logout",
+          "markdownDescription": "Enables the logout command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mark_todo_done command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mark-todo-done",
+          "markdownDescription": "Enables the mark_todo_done command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_conversation command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-conversation",
+          "markdownDescription": "Enables the open_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_external command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-external",
+          "markdownDescription": "Enables the open_external command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the poll_qr command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-poll-qr",
+          "markdownDescription": "Enables the poll_qr command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-quit-app",
+          "markdownDescription": "Enables the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reflow_main_webview command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reflow-main-webview",
+          "markdownDescription": "Enables the reflow_main_webview command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the report_requests command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-report-requests",
+          "markdownDescription": "Enables the report_requests command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-settings",
+          "markdownDescription": "Enables the save_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_autostart command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-autostart",
+          "markdownDescription": "Enables the set_autostart command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_hotkey command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-hotkey",
+          "markdownDescription": "Enables the set_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_mini_card_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-mini-card-visible",
+          "markdownDescription": "Enables the set_mini_card_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start",
+          "markdownDescription": "Enables the start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_role command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-role",
+          "markdownDescription": "Enables the switch_role command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the sync_tabs_on_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sync-tabs-on-resize",
+          "markdownDescription": "Enables the sync_tabs_on_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_activate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-activate",
+          "markdownDescription": "Enables the tab_activate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_bounds command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-bounds",
+          "markdownDescription": "Enables the tab_bounds command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-close",
+          "markdownDescription": "Enables the tab_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_close_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-close-all",
+          "markdownDescription": "Enables the tab_close_all command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_close_others command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-close-others",
+          "markdownDescription": "Enables the tab_close_others command without any pre-configured scope."
         },
         {
           "description": "Enables the tab_close_self command without any pre-configured scope.",
@@ -189,16 +489,448 @@
           "markdownDescription": "Enables the tab_close_self command without any pre-configured scope."
         },
         {
+          "description": "Enables the tab_hide_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-hide-all",
+          "markdownDescription": "Enables the tab_hide_all command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_list_cmd command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-list-cmd",
+          "markdownDescription": "Enables the tab_list_cmd command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-navigate",
+          "markdownDescription": "Enables the tab_navigate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-open",
+          "markdownDescription": "Enables the tab_open command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_reload command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-reload",
+          "markdownDescription": "Enables the tab_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_report_title command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-report-title",
+          "markdownDescription": "Enables the tab_report_title command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_restore_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-restore-all",
+          "markdownDescription": "Enables the tab_restore_all command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the tab_restore_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tab-restore-session",
+          "markdownDescription": "Enables the tab_restore_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the toggle_mini_bar command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toggle-mini-bar",
+          "markdownDescription": "Enables the toggle_mini_bar command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the trace_invoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-trace-invoke",
+          "markdownDescription": "Enables the trace_invoke command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the try_auto_login command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-try-auto-login",
+          "markdownDescription": "Enables the try_auto_login command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the account_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-account-delete",
+          "markdownDescription": "Denies the account_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the account_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-account-list",
+          "markdownDescription": "Denies the account_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the account_save command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-account-save",
+          "markdownDescription": "Denies the account_save command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the capture_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-capture-session",
+          "markdownDescription": "Denies the capture_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_captcha_required command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-captcha-required",
+          "markdownDescription": "Denies the check_captcha_required command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_now command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-now",
+          "markdownDescription": "Denies the check_now command without any pre-configured scope."
+        },
+        {
           "description": "Denies the close_webview_self command without any pre-configured scope.",
           "type": "string",
           "const": "deny-close-webview-self",
           "markdownDescription": "Denies the close_webview_self command without any pre-configured scope."
         },
         {
+          "description": "Denies the debug_dump command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-debug-dump",
+          "markdownDescription": "Denies the debug_dump command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the debug_webview_rect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-debug-webview-rect",
+          "markdownDescription": "Denies the debug_webview_rect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the fire_snooze command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-fire-snooze",
+          "markdownDescription": "Denies the fire_snooze command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_ai_agents command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-ai-agents",
+          "markdownDescription": "Denies the get_ai_agents command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_app_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-app-version",
+          "markdownDescription": "Denies the get_app_version command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_captcha command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-captcha",
+          "markdownDescription": "Denies the get_captcha command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_credential_hint command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-credential-hint",
+          "markdownDescription": "Denies the get_credential_hint command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_docs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-docs",
+          "markdownDescription": "Denies the get_docs command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_matters command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-matters",
+          "markdownDescription": "Denies the get_matters command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_message_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-message-history",
+          "markdownDescription": "Denies the get_message_history command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_messages command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-messages",
+          "markdownDescription": "Denies the get_messages command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_ops_apps command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-ops-apps",
+          "markdownDescription": "Denies the get_ops_apps command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_quick_entries command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-quick-entries",
+          "markdownDescription": "Denies the get_quick_entries command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_roles command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-roles",
+          "markdownDescription": "Denies the get_roles command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-settings",
+          "markdownDescription": "Denies the get_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_spaces command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-spaces",
+          "markdownDescription": "Denies the get_spaces command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_todos command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-todos",
+          "markdownDescription": "Denies the get_todos command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_user_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-user-info",
+          "markdownDescription": "Denies the get_user_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the is_logged_in command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-is-logged-in",
+          "markdownDescription": "Denies the is_logged_in command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the layout_full command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-layout-full",
+          "markdownDescription": "Denies the layout_full command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the layout_mini command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-layout-mini",
+          "markdownDescription": "Denies the layout_mini command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the login_local command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-login-local",
+          "markdownDescription": "Denies the login_local command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the login_qr command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-login-qr",
+          "markdownDescription": "Denies the login_qr command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the login_webview command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-login-webview",
+          "markdownDescription": "Denies the login_webview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the logout command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-logout",
+          "markdownDescription": "Denies the logout command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mark_todo_done command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mark-todo-done",
+          "markdownDescription": "Denies the mark_todo_done command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_conversation command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-conversation",
+          "markdownDescription": "Denies the open_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_external command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-external",
+          "markdownDescription": "Denies the open_external command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the poll_qr command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-poll-qr",
+          "markdownDescription": "Denies the poll_qr command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the quit_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-quit-app",
+          "markdownDescription": "Denies the quit_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reflow_main_webview command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reflow-main-webview",
+          "markdownDescription": "Denies the reflow_main_webview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the report_requests command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-report-requests",
+          "markdownDescription": "Denies the report_requests command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-settings",
+          "markdownDescription": "Denies the save_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_autostart command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-autostart",
+          "markdownDescription": "Denies the set_autostart command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_hotkey command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-hotkey",
+          "markdownDescription": "Denies the set_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_mini_card_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-mini-card-visible",
+          "markdownDescription": "Denies the set_mini_card_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start",
+          "markdownDescription": "Denies the start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_role command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-role",
+          "markdownDescription": "Denies the switch_role command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sync_tabs_on_resize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sync-tabs-on-resize",
+          "markdownDescription": "Denies the sync_tabs_on_resize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_activate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-activate",
+          "markdownDescription": "Denies the tab_activate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_bounds command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-bounds",
+          "markdownDescription": "Denies the tab_bounds command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-close",
+          "markdownDescription": "Denies the tab_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_close_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-close-all",
+          "markdownDescription": "Denies the tab_close_all command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_close_others command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-close-others",
+          "markdownDescription": "Denies the tab_close_others command without any pre-configured scope."
+        },
+        {
           "description": "Denies the tab_close_self command without any pre-configured scope.",
           "type": "string",
           "const": "deny-tab-close-self",
           "markdownDescription": "Denies the tab_close_self command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_hide_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-hide-all",
+          "markdownDescription": "Denies the tab_hide_all command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_list_cmd command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-list-cmd",
+          "markdownDescription": "Denies the tab_list_cmd command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_navigate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-navigate",
+          "markdownDescription": "Denies the tab_navigate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_open command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-open",
+          "markdownDescription": "Denies the tab_open command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_reload command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-reload",
+          "markdownDescription": "Denies the tab_reload command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_report_title command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-report-title",
+          "markdownDescription": "Denies the tab_report_title command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_restore_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-restore-all",
+          "markdownDescription": "Denies the tab_restore_all command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tab_restore_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tab-restore-session",
+          "markdownDescription": "Denies the tab_restore_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toggle_mini_bar command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toggle-mini-bar",
+          "markdownDescription": "Denies the toggle_mini_bar command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the trace_invoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-trace-invoke",
+          "markdownDescription": "Denies the trace_invoke command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the try_auto_login command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-try-auto-login",
+          "markdownDescription": "Denies the try_auto_login command without any pre-configured scope."
         },
         {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",

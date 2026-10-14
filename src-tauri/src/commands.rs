@@ -2200,7 +2200,7 @@ pub(crate) async fn ensure_main_window(app: &AppHandle) -> Result<tauri::Window,
         .unwrap_or_else(|| "业务小助手".to_string());
     tauri::WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title(title)
-        .inner_size(432.0, 640.0)
+        .inner_size(830.0, 960.0)
         .min_inner_size(360.0, 480.0)
         .resizable(true)
         .visible(false)

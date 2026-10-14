@@ -1066,17 +1066,24 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-wrap { display: flex; flex: 1; min-height: 0; height: 100%; }
 .disk-side { width: 230px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; }
 .disk-select { margin: 8px 8px 4px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 13px; color: inherit; }
+.disk-bar .disk-select { margin: 0; width: 170px; flex: none; }
 .disk-tree { flex: 1; overflow: auto; padding: 4px 4px 12px; min-height: 0; }
 .disk-tree-item { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; }
 .disk-tree-item:hover { background: rgba(14, 165, 233, 0.08); }
 .disk-tree-item.sel { background: rgba(14, 165, 233, 0.14); color: #0284c7; font-weight: 600; }
 .disk-tree-item .tw { width: 12px; flex: none; text-align: center; color: var(--text-3, #888); font-size: 10px; }
 .disk-tree-item .tname { overflow: hidden; text-overflow: ellipsis; }
+.disk-tree-item .d-chk { flex: none; accent-color: #0ea5e9; }
+.disk-tree-item .d-chk-sp { width: 16px; flex: none; }
+.disk-tree-item .d-ico { flex: none; font-size: 13px; }
+.disk-tree-item.is-file .tname { font-weight: 400; color: var(--text-2, #444); }
 .disk-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .disk-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .disk-crumb { font-size: 13px; font-weight: 600; color: var(--text-2, #444); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 12.5px; cursor: pointer; color: inherit; white-space: nowrap; }
 .disk-btn:hover { border-color: #0ea5e9; color: #0284c7; }
+.disk-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.disk-btn:disabled:hover { border-color: var(--border); color: inherit; }
 .disk-btn.ghost { border-color: transparent; }
 .disk-list { flex: 1; overflow: auto; padding: 6px 10px; min-height: 0; }
 .disk-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; }

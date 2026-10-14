@@ -1007,10 +1007,13 @@ const diskSt = {
   children: new Map<string, DiskNode[]>(), // subjectId → 直接子节点
   flat: new Map<string, DiskNode>(), // id → 节点（diskNodes 返回整树扁平列表，一次灌满）
   expanded: new Set<string>(),
-  selected: null as DiskNode | null,
-  checked: new Set<string>(), // 勾选的 FILE 文章 id
+  checked: new Set<string>(), // 勾选的节点 id（目录 + FILE 文件；勾目录级联其子树文件）
+  unchecked: new Set<string>(), // 在勾选祖先下被显式取消的节点（下载收集时剪枝，保勾选/取消语义一致）
   pending: [] as string[], // 资源管理器右键带入的待上传文件
 };
+
+/** 正在上传的目标目录 id（上传完成后刷新该目录子树） */
+let diskUploadSubjectId = "";
 
 interface DiskProgressEvt {
   kind: "upload" | "download";
@@ -1050,54 +1053,52 @@ void on<DiskProgressEvt>("disk-progress", (p) => {
   else if (p.msg && p.msg !== "全部完成") diskLog(`${tag} ✓ ${p.file}（${p.done}/${p.total}）`, true);
   if (p.msg === "全部完成") {
     diskLog(`${tag}：全部完成（${p.total} 个）`, true);
-    // 上传完成 → 刷新当前目录
-    if (p.kind === "upload" && diskSt.selected) {
-      diskSt.loaded.delete(diskSt.selected.id);
-      diskSt.children.delete(diskSt.selected.id);
-      void diskSelectSubject(diskSt.selected, true);
+    // 上传完成 → 重新拉取目标目录子树并刷新树
+    if (p.kind === "upload" && diskUploadSubjectId) {
+      diskSt.loaded.delete(diskUploadSubjectId);
+      diskSt.children.delete(diskUploadSubjectId);
+      const node = diskSt.flat.get(diskUploadSubjectId);
+      if (node) void diskExpand(node);
     }
   }
 });
 
-// 资源管理器右键「上传到个人空间」：第二实例转发文件路径
+// 资源管理器右键「上传到个人空间」：第二实例转发文件路径。
+// 有记忆目标（且与当前产品个人空间一致）→ 直接上传；否则切到网盘页等用户勾选目录
 void on<string[]>("disk-upload-request", (paths) => {
   void (async () => {
     if (!paths?.length) return;
     diskSt.pending = paths;
-    switchTab("disk");
     const last = diskLastTarget();
     const pid = await api.diskPersonalSpaceId().catch(() => "");
     if (last && pid && last.spaceId === pid) {
-      await diskLoadSpace(pid);
-      const subj = diskSt.flat.get(last.subjectId);
-      if (subj) {
-        await diskSelectSubject(subj, true);
-        void diskUploadTo(subj);
+      toast(`开始上传 ${paths.length} 个文件到「${last.name}」`);
+      try {
+        await api.diskUploadFiles(last.spaceId, last.subjectId, paths);
         return;
+      } catch {
+        /* 直接上传失败（如未登录）→ 落到下面引导流程 */
       }
     }
-    toast(`已就绪：请选择目标目录后点「上传」（${paths.length} 个文件）`);
+    switchTab("disk");
+    toast(`已就绪：请在网盘树上勾选目标目录后点「上传」（${paths.length} 个文件）`);
   })();
 });
 
-/** 「网盘」页：左侧空间/目录树，右侧文件列表 + 批量上传/下载 */
+/** 「网盘」页：目录树（含最末级文件）+ 树上勾选 + 批量上传/下载 */
 async function renderDisk(content: HTMLElement) {
   content.innerHTML = `
     <div class="disk-wrap">
-      <aside class="disk-side">
-        <select id="disk-space" class="disk-select" title="选择空间"></select>
-        <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
-      </aside>
       <section class="disk-main">
         <div class="disk-bar">
-          <span class="disk-crumb" id="disk-crumb">个人空间</span>
+          <select id="disk-space" class="disk-select" title="选择空间"></select>
+          <span class="disk-crumb" id="disk-hint">勾选目录 = 级联选中其下全部文件</span>
           <span class="tb-spacer"></span>
-          <button class="disk-btn" id="disk-up" title="上传文件到当前目录">↑ 上传</button>
-          <button class="disk-btn" id="disk-dl-sel" title="下载勾选的文件">↓ 下载选中</button>
-          <button class="disk-btn" id="disk-dl-all" title="递归下载当前目录（含子目录）的全部文件">⇩ 下载整个目录</button>
+          <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>↑ 上传</button>
+          <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>↓ 下载</button>
           <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
         </div>
-        <div class="disk-list" id="disk-list"><div class="empty">正在加载…</div></div>
+        <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
         <div class="disk-log" id="disk-log"></div>
       </section>
     </div>`;
@@ -1126,29 +1127,15 @@ async function renderDisk(content: HTMLElement) {
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-up")!.addEventListener("click", () => {
-    if (!diskSt.selected) return toast("请先在左侧选择目录");
-    void diskUploadTo(diskSt.selected);
+    const d = diskFirstCheckedDir();
+    if (!d) return toast("请先在树上勾选一个目标目录");
+    void diskUploadTo(d);
   });
-  document.getElementById("disk-dl-sel")!.addEventListener("click", () => {
-    if (!diskSt.checked.size) return toast("请先勾选要下载的文件");
-    const items: DiskDlItem[] = [];
-    for (const id of diskSt.checked) {
-      const n = diskSt.flat.get(id);
-      if (n) items.push({ articleId: n.id, name: diskFileName(n), relDir: "" });
-    }
-    void diskDownload(items);
-  });
-  document.getElementById("disk-dl-all")!.addEventListener("click", () => {
-    if (!diskSt.selected) return toast("请先在左侧选择目录");
+  document.getElementById("disk-dl")!.addEventListener("click", () => {
     void (async () => {
-      try {
-        await diskEnsureSubtree(diskSt.selected!);
-        const items = diskSubtreeFileItems(diskSt.selected!.id);
-        if (!items.length) return toast("该目录下没有文件型文档");
-        void diskDownload(items);
-      } catch (e) {
-        toast(`获取目录内容失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
-      }
+      const items = diskCheckedDlItems();
+      if (!items.length) return toast("勾选中没有可下载的文件（在线文档请在网页端打开）");
+      await diskDownload(items);
     })();
   });
   await diskLoadSpace(sel.value);
@@ -1165,7 +1152,7 @@ function sanitizeDiskName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-/** 加载空间：拉根树并默认选中第一个目录。切换空间必须清 roots，否则沿用旧空间树不刷新 */
+/** 加载空间：拉根树并渲染。切换空间必须清 roots + 勾选，否则沿用旧空间数据不刷新 */
 async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.spaceId = spaceId;
   diskSt.loaded.clear();
@@ -1173,6 +1160,7 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.flat.clear();
   diskSt.expanded.clear();
   diskSt.checked.clear();
+  diskSt.unchecked.clear();
   diskSt.roots = [];
   try {
     diskSt.roots = await api.diskTree(spaceId);
@@ -1183,9 +1171,7 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
   }
   for (const n of diskSt.roots) diskSt.flat.set(n.id, n);
   diskRenderTree();
-  const first = diskSt.roots[0];
-  if (first) await diskSelectSubject(first, true);
-  else document.getElementById("disk-list")!.innerHTML = `<div class="empty">该空间没有目录</div>`;
+  diskUpdateButtons();
 }
 
 /** 拉取节点子列表（B/S 返回整树扁平列表；此处只取直接子节点，全量灌入 flat）。
@@ -1210,137 +1196,238 @@ async function diskEnsureSubtree(root: DiskNode): Promise<void> {
   }
 }
 
-/** 当前目录子树内的全部 FILE 文章（relDir 由祖先链构建） */
-function diskSubtreeFileItems(rootId: string): DiskDlItem[] {
-  const out: DiskDlItem[] = [];
-  for (const n of diskSt.flat.values()) {
-    if (n.nodeType !== "article" || n.subtype !== "FILE") continue;
-    const chain = n.pids ? n.pids.split(",") : [];
-    const idx = chain.indexOf(rootId);
-    if (idx < 0) continue;
-    const dirs = chain
-      .slice(idx + 1, Math.max(idx + 1, chain.length - 1))
-      .map((id) => diskSt.flat.get(id)?.name || "")
-      .filter(Boolean);
-    out.push({ articleId: n.id, name: diskFileName(n), relDir: dirs.join("/") });
-  }
-  return out;
-}
-
+/** 渲染目录树：目录 + 最末级文件叶子，节点带 checkbox */
 function diskRenderTree(): void {
   const tree = document.getElementById("disk-tree");
   if (!tree) return;
   const parts: string[] = [];
   const walk = (nodes: DiskNode[], depth: number) => {
     for (const n of nodes) {
-      if (n.nodeType !== "subject") continue;
-      const kids = diskSt.children.get(n.id);
-      const hasKids = diskSt.loaded.has(n.id) ? !!kids?.length : !n.isLeaf;
-      const open = diskSt.expanded.has(n.id);
-      const selCls = diskSt.selected?.id === n.id ? " sel" : "";
-      parts.push(
-        `<div class="disk-tree-item${selCls}" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
-          `<span class="tw">${hasKids ? (open ? "▾" : "▸") : ""}</span>` +
-          `<span class="tname">${esc(n.name)}</span></div>`,
-      );
-      if (open && kids) {
-        walk(kids.filter((k) => k.nodeType === "subject"), depth + 1);
+      if (n.nodeType === "subject") {
+        const kids = diskSt.children.get(n.id);
+        const hasKids = diskSt.loaded.has(n.id) ? !!kids?.length : !n.isLeaf;
+        const open = diskSt.expanded.has(n.id);
+        const chk = diskSt.checked.has(n.id) ? " checked" : "";
+        parts.push(
+          `<div class="disk-tree-item" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
+            `<span class="tw">${hasKids ? (open ? "▾" : "▸") : ""}</span>` +
+            `<input type="checkbox" class="d-chk" data-id="${esc(n.id)}"${chk} title="勾选目录（级联包含下级全部文件）" />` +
+            `<span class="d-ico">📁</span><span class="tname">${esc(n.name)}</span></div>`,
+        );
+        if (open && kids) walk(kids, depth + 1);
+      } else {
+        // 最末级文件直接作为树叶子展示；FILE 可勾选，在线文档（DOC/RICHTEXT…）不可下载仅展示
+        const isFile = n.subtype === "FILE";
+        const chk = diskSt.checked.has(n.id) ? " checked" : "";
+        parts.push(
+          `<div class="disk-tree-item is-file" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
+            `<span class="tw"></span>` +
+            (isFile
+              ? `<input type="checkbox" class="d-chk" data-id="${esc(n.id)}"${chk} title="勾选文件" />`
+              : `<span class="d-chk-sp"></span>`) +
+            `<span class="d-ico">${isFile ? "📄" : "📝"}</span><span class="tname">${esc(n.name)}</span></div>`,
+        );
       }
     }
   };
   walk(diskSt.roots, 0);
   tree.innerHTML = parts.join("") || `<div class="empty">没有目录</div>`;
   tree.querySelectorAll<HTMLElement>(".disk-tree-item").forEach((el) => {
+    const id = el.dataset.id || "";
+    el.querySelector<HTMLInputElement>(".d-chk")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void diskToggleCheck(id, (ev.target as HTMLInputElement).checked);
+    });
     el.addEventListener("click", (ev) => {
-      const id = el.dataset.id || "";
+      if ((ev.target as HTMLElement).tagName === "INPUT") return;
       const node = diskSt.flat.get(id);
       if (!node) return;
-      // 点箭头 = 展开/收起；点名称 = 选中
-      const isToggle = (ev.target as HTMLElement).classList.contains("tw") && diskSt.expanded.has(id);
-      if (diskSt.expanded.has(id) && isToggle) {
-        diskSt.expanded.delete(id);
-        diskRenderTree();
-        return;
+      if (node.nodeType === "subject") {
+        // 点箭头 = 收起；点其它位置 = 展开并加载子节点
+        if (diskSt.expanded.has(id) && (ev.target as HTMLElement).classList.contains("tw")) {
+          diskSt.expanded.delete(id);
+          diskRenderTree();
+          return;
+        }
+        diskSt.expanded.add(id);
+        void diskExpand(node);
+      } else if (node.subtype === "FILE") {
+        // 点文件名 = 切换勾选
+        const chkEl = el.querySelector<HTMLInputElement>(".d-chk");
+        if (chkEl) {
+          chkEl.checked = !chkEl.checked;
+          void diskToggleCheck(id, chkEl.checked);
+        }
       }
-      diskSt.expanded.add(id);
-      void diskSelectSubject(node, false);
     });
   });
 }
 
-/** 选中目录：加载子节点 + 渲染右侧列表 */
-async function diskSelectSubject(node: DiskNode, force = false): Promise<void> {
-  diskSt.selected = node;
-  diskSt.checked.clear();
+/** 展开目录：拉子节点（缓存命中即返回）并重绘树 */
+async function diskExpand(node: DiskNode): Promise<void> {
   try {
-    if (force) {
-      diskSt.loaded.delete(node.id);
-      diskSt.children.delete(node.id);
-    }
     await diskFetchChildren(node.id);
   } catch (e) {
-    document.getElementById("disk-list")!.innerHTML =
-      `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
+    diskLog(`读取目录「${node.name}」失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
+  }
+  diskRenderTree();
+}
+
+/** 勾选/取消勾选一个节点：目录级联其子树（勾=全部 FILE；取消=清空子树勾选）。
+ *  在勾选祖先下手动取消的子目录/文件记入 unchecked，下载收集时剪枝 */
+async function diskToggleCheck(id: string, on: boolean): Promise<void> {
+  const node = diskSt.flat.get(id);
+  if (!node) return;
+  if (on) {
+    diskSt.checked.add(id);
+    diskSt.unchecked.delete(id);
+  } else {
+    diskSt.checked.delete(id);
+    diskSt.unchecked.add(id);
+  }
+  diskUpdateButtons();
+  if (node.nodeType !== "subject") {
     diskRenderTree();
     return;
   }
+  if (on) {
+    // 级联前先确保子树已加载（未展开的目录也要拉全），并清除子树的显式取消记录
+    try {
+      await diskEnsureSubtree(node);
+    } catch (e) {
+      diskLog(`级联读取「${node.name}」失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
+    }
+    const under = diskCollectUnder(node.id);
+    for (const k of under) diskSt.unchecked.delete(k.id);
+    for (const k of under) {
+      if (k.nodeType === "article" && k.subtype === "FILE") diskSt.checked.add(k.id);
+      else if (k.nodeType === "subject") diskSt.checked.add(k.id);
+    }
+  } else {
+    for (const k of diskCollectUnder(node.id)) diskSt.checked.delete(k.id);
+  }
   diskRenderTree();
-  diskRenderList();
+  diskUpdateButtons();
 }
 
-function diskCrumbText(node: DiskNode): string {
-  const chain = (node.pids ? node.pids.split(",") : []).filter((id) => id !== node.id);
-  const names = chain.map((id) => diskSt.flat.get(id)?.name).filter(Boolean) as string[];
-  names.push(node.name);
-  return names.join(" / ");
+/** 收集 rootId 目录下已加载的全部子孙节点（依据 children 映射逐层递归）。
+ *  prune=true 时跳过 unchecked 的子目录分支（及其子树） */
+function diskCollectUnder(rootId: string, prune = false): DiskNode[] {
+  const out: DiskNode[] = [];
+  const walk = (pid: string) => {
+    for (const k of diskSt.children.get(pid) || []) {
+      if (prune && k.nodeType === "subject" && diskSt.unchecked.has(k.id)) continue;
+      out.push(k);
+      if (k.nodeType === "subject") walk(k.id);
+    }
+  };
+  walk(rootId);
+  return out;
 }
 
-function diskRenderList(): void {
-  const node = diskSt.selected;
-  const list = document.getElementById("disk-list");
-  if (!node || !list) return;
-  const crumb = document.getElementById("disk-crumb");
-  if (crumb) crumb.textContent = diskCrumbText(node);
-  const kids = diskSt.children.get(node.id) || [];
-  const subjects = kids.filter((k) => k.nodeType === "subject");
-  const articles = kids.filter((k) => k.nodeType === "article");
-  const fmtDate = (ms: number) => (ms ? new Date(ms).toLocaleDateString() : "");
-  const typeChip = (t: string) =>
-    `<span class="disk-chip t-${esc(t.toLowerCase())}">${esc(t === "FILE" ? "文件" : t === "EXCEL" ? "表格" : t === "DOC" ? "文档" : t === "RICHTEXT" ? "富文本" : t)}</span>`;
-  const rows = subjects
-    .map(
-      (s) => `<div class="disk-row is-dir" data-id="${esc(s.id)}" title="打开目录">
-        <span class="d-ico">📁</span><span class="d-name">${esc(s.name)}</span><span class="d-meta">目录</span></div>`,
-    )
-    .concat(
-      articles.map((a) => {
-        const isFile = a.subtype === "FILE";
-        const chk = diskSt.checked.has(a.id);
-        return `<div class="disk-row" data-id="${esc(a.id)}">
-        ${isFile ? `<input type="checkbox" class="d-chk" data-id="${esc(a.id)}" ${chk ? "checked" : ""} title="勾选下载" />` : `<span class="d-chk-sp"></span>`}
-        <span class="d-ico">${isFile ? "📄" : "📝"}</span>
-        <span class="d-name" title="${esc(a.name)}">${esc(a.name)}</span>
-        ${typeChip(a.subtype)}
-        <span class="d-meta">${fmtDate(a.updateTime)}</span></div>`;
-      }),
-    );
-  list.innerHTML =
-    rows.join("") || `<div class="empty">目录为空（可点右上「↑ 上传」传文件）</div>`;
-  list.querySelectorAll<HTMLElement>(".disk-row.is-dir").forEach((el) =>
-    el.addEventListener("click", () => {
-      const n = diskSt.flat.get(el.dataset.id || "");
-      if (n) {
-        diskSt.expanded.add(n.id);
-        void diskSelectSubject(n);
-      }
-    }),
-  );
-  list.querySelectorAll<HTMLInputElement>(".d-chk").forEach((el) =>
-    el.addEventListener("change", () => {
-      if (el.checked) diskSt.checked.add(el.dataset.id || "");
-      else diskSt.checked.delete(el.dataset.id || "");
-    }),
-  );
+/** 第一个勾选的目录（作为上传目标） */
+function diskFirstCheckedDir(): DiskNode | null {
+  for (const id of diskSt.checked) {
+    const n = diskSt.flat.get(id);
+    if (n && n.nodeType === "subject") return n;
+  }
+  return null;
+}
+
+/** 按勾选状态点亮/灰置上传、下载按钮 */
+function diskUpdateButtons(): void {
+  const up = document.getElementById("disk-up") as HTMLButtonElement | null;
+  const dl = document.getElementById("disk-dl") as HTMLButtonElement | null;
+  const dir = diskFirstCheckedDir();
+  if (up) {
+    up.disabled = !dir;
+    up.title = dir ? `上传文件到「${dir.name}」` : "先在树上勾选一个目标目录";
+  }
+  if (dl) {
+    dl.disabled = diskSt.checked.size === 0;
+    dl.title = "下载勾选的文件（含勾选目录级联的文件）";
+  }
+  const hint = document.getElementById("disk-hint");
+  if (hint) {
+    const nFiles = [...diskSt.checked].filter((id) => diskSt.flat.get(id)?.nodeType === "article").length;
+    hint.textContent = dir
+      ? `上传目标：「${dir.name}」｜已选 ${nFiles} 个文件`
+      : nFiles
+        ? `已选 ${nFiles} 个文件`
+        : "勾选目录 = 级联选中其下全部文件";
+  }
+}
+
+/** 汇总勾选 → 下载任务列表。
+ *  勾选文件直接加入；勾选目录展开为其子树 FILE（unchecked 分支剪枝），
+ *  且仅当文件的最远勾选祖先就是该目录时归属它（避免与子目录重复/冲突） */
+function diskCheckedDlItems(): DiskDlItem[] {
+  const out: DiskDlItem[] = [];
+  const seen = new Set<string>();
+  const add = (n: DiskNode) => {
+    if (n.nodeType !== "article" || n.subtype !== "FILE" || seen.has(n.id)) return;
+    seen.add(n.id);
+    out.push({ articleId: n.id, name: diskFileName(n), relDir: diskRelDir(n) });
+  };
+  for (const id of diskSt.checked) {
+    const n = diskSt.flat.get(id);
+    if (!n) continue;
+    if (n.nodeType === "article") {
+      add(n);
+      continue;
+    }
+    for (const k of diskCollectUnder(id, true)) {
+      if (k.nodeType === "article" && !diskSt.unchecked.has(k.id) && diskTopCheckedAncestor(k) === id) add(k);
+    }
+  }
+  return out;
+}
+
+/** 文件祖先链（pid 逐级上溯，自底向上）中最远的已勾选目录 id；无则 null */
+function diskTopCheckedAncestor(n: DiskNode): string | null {
+  const chain: string[] = [];
+  let cur = n.pid;
+  const guard = new Set<string>();
+  while (cur && !guard.has(cur)) {
+    guard.add(cur);
+    const p = diskSt.flat.get(cur);
+    if (!p || p.nodeType !== "subject") break;
+    chain.push(p.id);
+    cur = p.pid;
+  }
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (diskSt.checked.has(chain[i])) return chain[i];
+  }
+  return null;
+}
+
+/** 相对路径：文件祖先链（自底向上）中距其最远的勾选目录以下的目录名串 */
+function diskRelDir(n: DiskNode): string {
+  const chain: string[] = [];
+  let cur = n.pid;
+  const guard = new Set<string>();
+  while (cur && !guard.has(cur)) {
+    guard.add(cur);
+    const p = diskSt.flat.get(cur);
+    if (!p || p.nodeType !== "subject") break;
+    chain.push(p.id);
+    cur = p.pid;
+  }
+  let cut = -1;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (diskSt.checked.has(chain[i])) {
+      cut = i;
+      break;
+    }
+  }
+  if (cut < 0) return "";
+  return chain
+    .slice(0, cut)
+    .reverse()
+    .map((id) => diskSt.flat.get(id)?.name || "")
+    .filter(Boolean)
+    .map(sanitizeDiskName)
+    .join("/");
 }
 
 async function diskPickFiles(): Promise<string[]> {
@@ -1362,10 +1449,11 @@ async function diskPickDir(): Promise<string> {
   return typeof dir === "string" ? dir : "";
 }
 
-/** 上传到指定目录（记忆为该空间的默认目标；文件来源：右键带入 / 文件对话框） */
+/** 上传到勾选的目标目录（记忆为该空间的默认目标；文件来源：右键带入 / 文件对话框） */
 async function diskUploadTo(subject: DiskNode): Promise<void> {
   const paths = await diskPickFiles();
   if (!paths.length) return;
+  diskUploadSubjectId = subject.id;
   localStorage.setItem(
     diskTargetKey(),
     JSON.stringify({ spaceId: diskSt.spaceId, subjectId: subject.id, name: subject.name }),

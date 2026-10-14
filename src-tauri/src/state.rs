@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use reqwest::Client;
 use rusqlite::Connection;
@@ -196,14 +197,22 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(db: Connection, settings: Settings) -> Self {
-        // 复用 cookie store，使轮询请求自动携带登录会话
+        // 复用 cookie store，使轮询请求自动携带登录会话。
+        // 必须设 connect_timeout：reqwest 默认无超时，连接被静默丢弃（睡眠唤醒/
+        // 网络切换后的 TCP 黑洞）时请求会永久挂起，后台轮询循环随之停摆——
+        // 症状即「程序开着却永远收不到新消息」。总超时按请求单独设置
+        //（网盘大文件上传/下载复用此 client，client 级总超时会误杀）。
         let client = Client::builder()
             .cookie_store(true)
             .user_agent("AIF-Desktop-Client/0.1")
+            .connect_timeout(Duration::from_secs(10))
             .build()
             .expect("构建 reqwest client 失败");
         let auth_client = Client::builder()
             .user_agent("AIF-Desktop-Client/0.1")
+            .connect_timeout(Duration::from_secs(10))
+            // 登录是小表单请求；maybe_relogin 在轮询循环内 await，无超时会挂住循环
+            .timeout(Duration::from_secs(60))
             .build()
             .expect("构建登录 client 失败");
         Self {

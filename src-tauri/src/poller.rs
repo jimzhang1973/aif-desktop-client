@@ -30,6 +30,10 @@ pub struct PollStatus {
     pub ts: i64,
 }
 
+/// 轮询请求总超时（每请求）：心跳/消息/待办均为小 JSON，20s 绰绰有余；
+/// 超时即本轮失败 → 状态点变红 / 触发重登录自愈，绝不会挂住循环
+const POLL_REQ_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// 启动后台轮询。窗口隐藏也照常运行（在 Rust 异步运行时里）。
 pub fn start(state: Arc<AppState>, app: AppHandle) {
     // 通知点击跳转：Windows 上 toast 在屏期内点击会上报 tap（携带通知标题）。
@@ -262,7 +266,14 @@ async fn maybe_relogin(state: &Arc<AppState>, app: &AppHandle) {
 /// m 队列 —— 该队列消费型，会被内嵌 B/S 页面自身的心跳抢先消费导致漏提醒。
 async fn keepalive_ping(state: &Arc<AppState>, base: &str, path: &str, session: &str) {
     let url = format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'));
-    let _ = state.client.get(&url).header("Cookie", session).send().await;
+    let _ = state
+        .client
+        .get(&url)
+        .header("Cookie", session)
+        // 请求级总超时：防连接挂起卡死轮询循环（client 级只有 connect_timeout）
+        .timeout(POLL_REQ_TIMEOUT)
+        .send()
+        .await;
 }
 
 /// 通知源：B/S 历史消息接口（POST {base}/{root}/getMessageList，curl 实证，
@@ -283,6 +294,7 @@ async fn fetch_history_messages(
             .client
             .post(&url)
             .header("Cookie", session)
+            .timeout(POLL_REQ_TIMEOUT)
             .form(&[
                 ("source", source),
                 ("key", ""),
@@ -353,6 +365,7 @@ async fn fetch_todos(
         .client
         .get(&url)
         .header("Cookie", session)
+        .timeout(POLL_REQ_TIMEOUT)
         .send()
         .await?
         .error_for_status()?;

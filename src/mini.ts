@@ -422,6 +422,8 @@ window.addEventListener("storage", (e) => {
   if (e.key === "aif_unread_msg_ids" || e.key === "aif_quick_count") void refresh();
   // 产品形态切换（AIF ↔ DCP）：同步应用按钮/告警节显隐与条身长度
   else if (e.key === "aif_ops_product") onProductSwitched();
+  // 主窗标题栏刷新按钮强制刷新了智能体列表：失效本地缓存，下次悬停重新拉取
+  else if (e.key === "aif_agents_bust") agentCache = null;
 });
 window.setInterval(() => void refresh(), 60_000);
 

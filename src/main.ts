@@ -870,9 +870,21 @@ function renderPanel() {
     pollIco.classList.add("spinning");
     switchTab(currentTab);
     api.checkNow();
+    // 智能体列表强制刷新（旁路 1h 缓存）：助手页开着则重渲染；
+    // 写 aif_agents_bust 广播迷你条失效其本地缓存
+    api.getAiAgents(true)
+      .then(() => {
+        localStorage.setItem("aif_agents_bust", String(Date.now()));
+        if (currentTab === "assistant") switchTab("assistant");
+      })
+      .catch(() => {});
     toast("正在刷新数据");
     setTimeout(() => pollIco.classList.remove("spinning"), 700);
   });
+  // 智能体列表低频预热：1 小时一次（授权变更最迟 1 小时后可见；刷新按钮可即时强制）
+  setInterval(() => {
+    void api.getAiAgents().catch(() => {});
+  }, 3_600_000);
   // tab 切换：仅绑 data-tab 按钮（折叠按钮无 data-tab，走自己的 handler）
   document.querySelectorAll<HTMLButtonElement>(".nav-btn[data-tab]").forEach((t) =>
     t.addEventListener("click", () => switchTab(t.dataset.tab as typeof currentTab)),
@@ -925,8 +937,9 @@ function agentChatUrl(id: string): string {
     : `${base}/DCP/ai/index.htm?aiAgentId=${encodeURIComponent(id)}`;
 }
 
-/** 「助手」页：当前账号授权的 AI 智能体列表，点击在受控 webview 打开会话 */
-async function renderAssistant(content: HTMLElement) {
+/** 「助手」页：当前账号授权的 AI 智能体列表，点击在受控 webview 打开会话。
+ *  force=true 旁路 Rust 1h 缓存（页内刷新按钮/标题栏强制刷新用） */
+async function renderAssistant(content: HTMLElement, force = false) {
   const PALETTE = ["#6366f1", "#14b8a6", "#8b5cf6", "#f59e0b", "#10b981", "#f43f5e", "#06b6d4", "#3b82f6"];
   content.innerHTML = `
     <div class="type-chips"><span class="type-chip active">可用智能体</span><span class="tb-spacer"></span>
@@ -966,13 +979,13 @@ async function renderAssistant(content: HTMLElement) {
     );
   };
   try {
-    const agents = await api.getAiAgents();
+    const agents = await api.getAiAgents(force);
     draw(agents);
   } catch (e) {
     list.innerHTML = `<div class="empty">智能体列表加载失败：${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
   }
   document.getElementById("asst-refresh")!.addEventListener("click", () => {
-    void renderAssistant(content);
+    void renderAssistant(content, true);
   });
 }
 

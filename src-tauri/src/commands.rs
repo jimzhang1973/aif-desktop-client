@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// 诊断产物落盘（debug_session.txt / roles_debug.json / quick_entry_debug.json 等）。
 /// 仅 debug 构建（tauri dev）生效；release 打包完全关闭——不写会话、接口响应等调试文件。
@@ -2034,12 +2034,33 @@ pub struct AiAgent {
     pub icon: String,
 }
 
+/// 智能体列表进程级缓存：1 小时 TTL（低频更新；B/S 授权变更最迟 1 小时后可见），
+/// 主窗标题栏刷新按钮以 force 旁路强制拉取。
+static AGENTS_CACHE: OnceLock<Mutex<Option<(Instant, Vec<AiAgent>)>>> = OnceLock::new();
+const AGENTS_TTL: Duration = Duration::from_secs(3600);
+
 /// B/S 主页 AI 问答入口：获取当前账号授权的智能体列表（[{id,name,description,icon}]），
 /// 数据源先新版 persona 后旧版 agent（见函数体内注释）；前端拼
 /// ai/chat/index.htm?aiAgentId=<id> 在受控 webview 中打开问答页
 /// （B/S 原生行为：top.openNewTab(url, 'AI问答（name）', 'agentic_agent_'+id)）
 #[tauri::command]
-pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgent>, String> {
+pub async fn get_ai_agents(
+    state: State<'_, Arc<AppState>>,
+    force: Option<bool>,
+) -> Result<Vec<AiAgent>, String> {
+    // 未过期缓存直接返回（std Mutex 不可跨 await 持有，语句结束即释放）
+    if !force.unwrap_or(false) {
+        if let Some((at, agents)) = AGENTS_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap()
+            .clone()
+        {
+            if at.elapsed() < AGENTS_TTL {
+                return Ok(agents);
+            }
+        }
+    }
     let (base, root) = {
         let s = state.settings.lock().unwrap();
         (
@@ -2110,6 +2131,8 @@ pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgen
                         .filter(|a| !a.id.is_empty())
                         .collect();
                     // 拿到合法数组即返回：空数组 = 账号无授权智能体，也是权威结果，不再兜底
+                    *AGENTS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap() =
+                        Some((Instant::now(), agents.clone()));
                     return Ok(agents);
                 } else {
                     last_err = format!("{path} 数据格式异常（非数组）");

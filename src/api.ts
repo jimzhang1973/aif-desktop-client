@@ -212,7 +212,8 @@ export const _apiRaw = {
   // 运维产品（AIF）应用中心：按应用类型分组的应用清单
   getOpsApps: () => invoke<OpsAppGroup[]>("get_ops_apps"),
   // AI 问答：当前账号授权的智能体列表（前端拼 ai/chat/index.htm?aiAgentId=<id> 打开）
-  getAiAgents: () => invoke<AiAgent[]>("get_ai_agents"),
+  // force=true 旁路 Rust 1h 缓存强制拉取（标题栏刷新按钮用）；平时走缓存低频更新
+  getAiAgents: (force = false) => invoke<AiAgent[]>("get_ai_agents", { force }),
   // 快捷功能：B/S「快捷入口」清单（九宫格卡片）
   getQuickEntries: () => invoke<QuickEntry[]>("get_quick_entries"),
   // B/S 页面 window.close() 转交：关闭调用方 webview（面板隐藏/弹窗关闭/主窗隐藏）

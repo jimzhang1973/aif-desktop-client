@@ -1063,8 +1063,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .palette-foot { padding: 7px 14px; border-top: 1px solid var(--line); color: var(--text-3); font-size: var(--fs-xs); }
 
 /* ==================== 网盘（个人空间目录浏览 / 批量上传下载） ==================== */
-.disk-wrap { display: flex; flex: 1; min-height: 0; height: 100%; }
-.disk-side { width: 230px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; }
+.disk-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .disk-select { margin: 8px 8px 4px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 13px; color: inherit; }
 .disk-bar .disk-select { margin: 0; width: 170px; flex: none; }
 .disk-tree { flex: 1; overflow: auto; padding: 4px 4px 12px; min-height: 0; }
@@ -1077,28 +1076,13 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-tree-item .d-chk-sp { width: 16px; flex: none; }
 .disk-tree-item .d-ico { flex: none; font-size: 13px; }
 .disk-tree-item.is-file .tname { font-weight: 400; color: var(--text-2, #444); }
-.disk-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .disk-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.disk-crumb { font-size: 13px; font-weight: 600; color: var(--text-2, #444); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-hint { font-size: 12.5px; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 12.5px; cursor: pointer; color: inherit; white-space: nowrap; }
 .disk-btn:hover { border-color: #0ea5e9; color: #0284c7; }
 .disk-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .disk-btn:disabled:hover { border-color: var(--border); color: inherit; }
 .disk-btn.ghost { border-color: transparent; }
-.disk-list { flex: 1; overflow: auto; padding: 6px 10px; min-height: 0; }
-.disk-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
-.disk-row:hover { background: rgba(14, 165, 233, 0.06); }
-.disk-row.is-dir { cursor: pointer; font-weight: 500; }
-.disk-row .d-chk { flex: none; accent-color: #0ea5e9; }
-.disk-row .d-chk-sp { width: 16px; flex: none; }
-.disk-row .d-ico { flex: none; font-size: 14px; }
-.disk-row .d-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.disk-row .d-meta { flex: none; font-size: 11.5px; color: var(--text-3, #999); }
-.disk-chip { flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 7px; background: #f1f5f9; color: #64748b; }
-.disk-chip.t-file { background: #e0f2fe; color: #0369a1; }
-.disk-chip.t-excel { background: #dcfce7; color: #15803d; }
-.disk-chip.t-doc { background: #dbeafe; color: #1d4ed8; }
-.disk-chip.t-richtext, .disk-chip.t-collexcel { background: #fef3c7; color: #b45309; }
 .disk-log { flex: none; max-height: 132px; overflow: auto; border-top: 1px solid var(--border); padding: 4px 10px 6px; }
 .disk-log-row { font-size: 11.5px; line-height: 1.7; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-log-row.ok { color: #15803d; }

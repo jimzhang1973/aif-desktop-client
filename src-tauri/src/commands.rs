@@ -1507,14 +1507,6 @@ pub async fn get_message_history(
                     .unwrap_or("")
                     .to_string()
             };
-            // 服务端 id 字段不稳定：优先 id，缺省依次回退 tid / bid
-            let mut id = g("id");
-            if id.is_empty() {
-                id = g("tid");
-            }
-            if id.is_empty() {
-                id = g("bid");
-            }
             let sender = o
                 .get("si")
                 .and_then(|si| si.get("userName"))
@@ -1522,6 +1514,13 @@ pub async fn get_message_history(
                 .unwrap_or("")
                 .to_string();
             let body = g("c");
+            // 稳定去重键：来源|发送时间(秒)|内容|发送人 —— 与 poller::fetch_history_messages
+            // 完全同构（此前用服务端 id/tid/bid，与轮询入库的内容哈希 id 是两套空间，
+            // 导致轮询标了未读但消息页行 id 对不上、点行消不掉角标、行内未读样式失效）
+            let id = format!(
+                "{:016x}",
+                poller::fnv1a(&format!("hist|{}|{}|{}|{}", g("s"), g("st"), body, sender))
+            );
             // 标题：系统消息用来源系统名（t），个人消息用发送人；都没有则截取内容
             let mut title = g("t");
             if title.is_empty() {
@@ -2985,6 +2984,8 @@ pub fn trace_invoke(cmd: String, phase: String) {
 #[tauri::command]
 pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: String) {
     crate::poller::show_notification(&app, &title, &body, &url);
+    // 前端兜底：系统 toast 可能被 Windows 勿扰/通知设置吞掉，应用内 toast 保底可见
+    let _ = app.emit("snooze-fired", format!("{title}：{body}"));
 }
 
 /// 迷你速览条：屏幕右缘常置小窗（无边框 / 置顶 / 不进任务栏 / 不抢焦点）。

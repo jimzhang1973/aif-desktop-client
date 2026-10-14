@@ -1149,10 +1149,10 @@ function sanitizeDiskName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-/** 加载空间：拉取目录树。实测 findTreeByNodeId（id=某根目录）返回「全部 subject 节点 +
- *  该根目录子树下的全部文件」，即目录结构一次到位、文件只随所查目录返回——
- *  故初始只查第一个根（其余根的文件在点击展开/级联勾选时动态补拉，见 diskFetchChildren）。
- *  未覆盖的目录保持「未加载」态；查看/级联命中内存时零请求。 */
+/** 加载空间：全量拉取目录树。实测 findTreeByNodeId(id=某根目录) 返回「全部 subject 节点 +
+ *  仅该根目录子树下的文件」——目录结构任一次调用都全量返回，文件只随所查目录返回，
+ *  故对每个根各发一次请求（并行）即得完整目录树；某根失败不标 loaded，
+ *  展开/级联时动态补拉兜底（见 diskFetchChildren）。查看/级联命中内存时零请求。 */
 async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.spaceId = spaceId;
   diskSt.loaded.clear();
@@ -1170,14 +1170,15 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
     return;
   }
   for (const n of diskSt.roots) diskSt.flat.set(n.id, n);
-  if (diskSt.roots.length) {
-    try {
-      const all = await api.diskNodes(spaceId, diskSt.roots[0].id, "subject");
-      diskIndexAll(all);
-    } catch (e) {
-      diskLog(`拉取目录树失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
-    }
-  }
+  await Promise.all(
+    diskSt.roots.map(async (r) => {
+      try {
+        diskIndexAll(await api.diskNodes(spaceId, r.id, "subject"));
+      } catch (e) {
+        diskLog(`拉取「${r.name}」子树失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
+      }
+    }),
+  );
   diskMarkLoadedFromIndex();
   // 默认展开第一层（根目录）
   for (const r of diskSt.roots) diskSt.expanded.add(r.id);
@@ -1584,7 +1585,12 @@ let msgState = {
 
 // ---- 未读消息跟踪 + 底部导航数字角标 ----
 // 未读 = 轮询收到但尚未在「消息」页浏览过的消息 id 集合（localStorage 持久化）
-let unreadIds = new Set<string>(JSON.parse(localStorage.getItem("aif_unread_msg_ids") || "[]") as string[]);
+// id 统一为内容哈希（16位hex）；旧版存过服务端 id（32位hex），永远匹配不到行，一次性过滤防角标虚高
+let unreadIds = new Set<string>(
+  (JSON.parse(localStorage.getItem("aif_unread_msg_ids") || "[]") as string[]).filter((id) =>
+    /^[0-9a-f]{16}$/.test(id),
+  ),
+);
 let todoBadgeCount = 0; // 「我收到的」各行「待办」计数合计
 
 function persistUnread() {
@@ -3645,6 +3651,14 @@ async function main() {
   // 心跳失效自愈失败提醒（无保存凭据/需验证码/密码已改）——引导人工登录
   on<string>("relogin-failed", (e) => {
     toast(e);
+  });
+  // 每日摘要前端兜底：系统 toast 被 Windows 吞掉时应用内保底可见
+  on<string>("daily-digest", (text) => {
+    toast(text);
+  });
+  // 稍后提醒到期兜底：同上（fire_snooze 系统通知旁路的应用内提示）
+  on<string>("snooze-fired", (text) => {
+    toast("稍后提醒：" + text);
   });
   on("todos-updated", () => {
     // 待办页开着：refreshTodos(true) 内部拉 matters 后经 applyTodoBadge 同步角标（省一次重复请求）；

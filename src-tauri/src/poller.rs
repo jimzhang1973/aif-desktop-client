@@ -431,8 +431,8 @@ pub(crate) fn absolute_url(base: &str, root: &str, u: &str) -> String {
     }
 }
 
-/// FNV-1a 64bit：无需额外依赖的稳定哈希（生成消息去重 id）
-fn fnv1a(s: &str) -> u64 {
+/// FNV-1a 64bit：无需额外依赖的稳定哈希（生成消息去重 id）。pub(crate)：commands::get_message_history 复用，保证两处 id 一致
+pub(crate) fn fnv1a(s: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in s.as_bytes() {
         h ^= *b as u64;
@@ -574,6 +574,12 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
         &format!("待办 {todo_cnt} 件未办结，今日新消息 {msg_cnt} 条"),
         "",
     );
+    // 前端兜底：系统 toast 若被 Windows 勿扰/通知设置吞掉，应用内 toast + 托盘闪烁保底可见
+    let _ = app.emit(
+        "daily-digest",
+        format!("每日摘要：待办 {todo_cnt} 件未办结，今日新消息 {msg_cnt} 条"),
+    );
+    crate::tray::flash(app);
 }
 
 /// 桌面通知发送（登记 notify_urls 供点击反查）。pub(crate)：commands::fire_snooze 复用。
@@ -588,10 +594,14 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
         q.push_back((title.to_string(), url.to_string()));
     }
     // tauri-plugin-notification 2.x：通过 NotificationExt trait 获取 builder
-    let _ = app
+    if let Err(e) = app
         .notification()
         .builder()
         .title(title)
         .body(body)
-        .show();
+        .show()
+    {
+        // 系统通知发送失败（如 AUMID 未注册/通知服务异常）必须留痕，否则表现为「静默无弹窗」
+        log::warn!("[notify] 系统通知发送失败：{title} | {e}");
+    }
 }

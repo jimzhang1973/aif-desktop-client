@@ -243,6 +243,12 @@
           "markdownDescription": "Enables the disk_context_menu_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the disk_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-delete",
+          "markdownDescription": "Enables the disk_delete command without any pre-configured scope."
+        },
+        {
           "description": "Enables the disk_download_files command without any pre-configured scope.",
           "type": "string",
           "const": "allow-disk-download-files",
@@ -667,6 +673,12 @@
           "type": "string",
           "const": "deny-disk-context-menu-status",
           "markdownDescription": "Denies the disk_context_menu_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_delete command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-delete",
+          "markdownDescription": "Denies the disk_delete command without any pre-configured scope."
         },
         {
           "description": "Denies the disk_download_files command without any pre-configured scope.",

@@ -796,14 +796,14 @@ function renderPanel() {
       </div>
       <div class="main-row">
         <nav class="sidenav" id="sidenav">
-          <button class="nav-btn" data-tab="messages" title="消息"><span class="tab-badge" id="badge-messages"></span><span class="nav-ico idle">${ICONS.messages.idle}</span><span class="nav-ico active">${ICONS.messages.active}</span></button>
-          <button class="nav-btn" data-tab="todos" title="待办"><span class="tab-badge" id="badge-todos"></span><span class="nav-ico idle">${ICONS.todos.idle}</span><span class="nav-ico active">${ICONS.todos.active}</span></button>
-          ${settings?.ops_product ? `<button class="nav-btn" data-tab="ops" title="运维"><span class="nav-ico idle">${ICONS.ops.idle}</span><span class="nav-ico active">${ICONS.ops.active}</span></button>` : ""}
-          <button class="nav-btn" data-tab="docs" title="文档"><span class="nav-ico idle">${ICONS.docs.idle}</span><span class="nav-ico active">${ICONS.docs.active}</span></button>
-          <button class="nav-btn" data-tab="spaces" title="空间"><span class="nav-ico idle">${ICONS.spaces.idle}</span><span class="nav-ico active">${ICONS.spaces.active}</span></button>
-          <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span></button>
+          <button class="nav-btn" data-tab="messages" title="消息"><span class="tab-badge" id="badge-messages"></span><span class="nav-ico idle">${ICONS.messages.idle}</span><span class="nav-ico active">${ICONS.messages.active}</span><span class="nav-label">消息</span></button>
+          <button class="nav-btn" data-tab="todos" title="待办"><span class="tab-badge" id="badge-todos"></span><span class="nav-ico idle">${ICONS.todos.idle}</span><span class="nav-ico active">${ICONS.todos.active}</span><span class="nav-label">待办</span></button>
+          ${settings?.ops_product ? `<button class="nav-btn" data-tab="ops" title="运维"><span class="nav-ico idle">${ICONS.ops.idle}</span><span class="nav-ico active">${ICONS.ops.active}</span><span class="nav-label">运维</span></button>` : ""}
+          <button class="nav-btn" data-tab="docs" title="文档"><span class="nav-ico idle">${ICONS.docs.idle}</span><span class="nav-ico active">${ICONS.docs.active}</span><span class="nav-label">文档</span></button>
+          <button class="nav-btn" data-tab="spaces" title="空间"><span class="nav-ico idle">${ICONS.spaces.idle}</span><span class="nav-ico active">${ICONS.spaces.active}</span><span class="nav-label">空间</span></button>
+          <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span><span class="nav-label">快捷</span></button>
           <button class="nav-btn collapse-btn" id="btn-collapse" title="折叠列表页"><span class="nav-ico idle">${listCollapsed ? UNFOLD_LIST_SVG : FOLD_LIST_SVG}</span></button>
-          <button class="nav-btn nav-bottom" data-tab="profile" title="我的"><span class="nav-ico idle">${ICONS.profile.idle}</span><span class="nav-ico active">${ICONS.profile.active}</span></button>
+          <button class="nav-btn nav-bottom" data-tab="profile" title="我的"><span class="nav-ico idle">${ICONS.profile.idle}</span><span class="nav-ico active">${ICONS.profile.active}</span><span class="nav-label">我的</span></button>
         </nav>
         <div class="content" id="content"></div>
         <div class="web-pane" id="web-pane">

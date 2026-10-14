@@ -36,9 +36,9 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tauri-plugin-log = "2"
 
-# 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）
+# 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）；MessageBeep 通知提示音
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Diagnostics_Debug"] }
 keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

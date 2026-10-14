@@ -151,10 +151,7 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
             let _ = app.emit("new-message", m.clone());
         }
         if !new_list.is_empty() {
-            // 有未静音消息才闪托盘（勿扰 = 不打扰）；前端据此刷新消息页
-            if new_list.iter().any(|m| !m.muted) {
-                crate::tray::flash(app);
-            }
+            // 新消息不再闪托盘：弹窗 + 提示音即可（勿扰 = 不打扰）；前端据此刷新消息页
             let _ = app.emit("messages-updated", ());
         }
     }
@@ -603,5 +600,10 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
     {
         // 系统通知发送失败（如 AUMID 未注册/通知服务异常）必须留痕，否则表现为「静默无弹窗」
         log::warn!("[notify] 系统通知发送失败：{title} | {e}");
+    }
+    // 提示音：弹窗 + 声音（Windows 用 MessageBeep 播系统「星号」提示音，立即返回不阻塞）
+    #[cfg(windows)]
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(0x0000_0040); // MB_ICONASTERISK
     }
 }

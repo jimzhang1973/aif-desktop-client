@@ -1271,6 +1271,45 @@ async function diskEnsureSubtree(root: DiskNode): Promise<void> {
 }
 
 /** 渲染目录树：目录 + 最末级文件叶子，节点带 checkbox */
+/** 在线文档类型 → 展示后缀（B/S 文章本身无后缀，按官方类型枚举映射虚拟扩展名） */
+const DISK_SUBTYPE_EXT: Record<string, string> = {
+  DOC: "docx",
+  MARKDOWN: "md",
+  EXCEL: "xlsx",
+  COLLEXCEL: "xlsx",
+  RICHTEXT: "txt",
+};
+
+/** 文件行展示名与后缀：FILE 用真实 subFileType；在线文档用类型映射的虚拟后缀 */
+function diskFileDisplay(n: DiskNode): { name: string; ext: string } {
+  const ext = (n.subtype === "FILE" ? n.subFileType || "" : DISK_SUBTYPE_EXT[n.subtype] || "")
+    .replace(/^\./, "")
+    .toLowerCase();
+  return { name: ext ? `${n.name}.${ext}` : n.name, ext };
+}
+
+/** 文件行类型图标：复用文档列表的 docTypeStyle 图标体系（W/X/P/PDF/通用彩条扩展名） */
+function diskFileIconHtml(n: DiskNode): string {
+  const { ext } = diskFileDisplay(n);
+  // docTypeStyle 只读 file_type/atype，用磁盘节点字段伪造行即可
+  const style = docTypeStyle({ file_type: ext, atype: n.subtype } as DocRow);
+  let body: string;
+  if (n.subtype === "FILE" && !ext) body = genericGlyph("#4f46e5", "FILE");
+  else if (style.kind === "word") body = officeGlyph("W", style.color);
+  else if (style.kind === "excel") body = officeGlyph("X", style.color);
+  else if (style.kind === "ppt") body = officeGlyph("P", style.color);
+  else if (style.kind === "pdf") body = pdfGlyph(style.color);
+  else body = genericGlyph(style.color, style.label);
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+
+/** 文档查看页 URL：B/S 官方 detail 页，DOC/MARKDOWN/FILE(docx/txt…) 实测通用（2026-10-14 探测） */
+function diskArticleUrl(n: DiskNode): string {
+  const base = (settings?.base_url || "").replace(/\/+$/, "");
+  const root = settings?.ops_product ? "AIF" : "DCP";
+  return `${base}/${root}/knowledge/article/detail.htm?id=${encodeURIComponent(n.id)}`;
+}
+
 function diskRenderTree(): void {
   const tree = document.getElementById("disk-tree");
   if (!tree) return;
@@ -1293,14 +1332,15 @@ function diskRenderTree(): void {
       } else {
         // 最末级文件直接作为树叶子展示；FILE 可勾选，在线文档（DOC/RICHTEXT…）不可下载仅展示
         const isFile = n.subtype === "FILE";
+        const disp = diskFileDisplay(n);
         const chk = diskSt.checked.has(n.id) ? " checked" : "";
         parts.push(
-          `<div class="disk-tree-item is-file" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
+          `<div class="disk-tree-item is-file" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(disp.name)}">` +
             `<span class="tw"></span>` +
             (isFile
               ? `<input type="checkbox" class="d-chk" data-id="${esc(n.id)}"${chk} title="勾选文件" />`
               : `<span class="d-chk-sp"></span>`) +
-            `<span class="d-ico">${isFile ? "📄" : "📝"}</span><span class="tname">${esc(n.name)}</span></div>`,
+            `<span class="d-ico">${diskFileIconHtml(n)}</span><span class="tname">${esc(disp.name)}</span></div>`,
         );
       }
     }
@@ -1331,13 +1371,9 @@ function diskRenderTree(): void {
           else diskSt.expanded.delete(id);
           void diskExpand(node, opening);
         }
-      } else if (node.subtype === "FILE") {
-        // 点文件名 = 切换勾选
-        const chkEl = el.querySelector<HTMLInputElement>(".d-chk");
-        if (chkEl) {
-          chkEl.checked = !chkEl.checked;
-          void diskToggleCheck(id, chkEl.checked);
-        }
+      } else {
+        // 点文件行 = 打开 webview 查看文档（B/S detail 页）；勾选只走 checkbox 自身事件
+        void openUrl(diskArticleUrl(node));
       }
     });
   });

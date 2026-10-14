@@ -2,12 +2,10 @@
 //
 // 程序版本编码（get_app_version，commands.rs）：
 //   <Cargo.toml 的 major.minor>.<BUILD_ID>
-//   BUILD_ID 由 src-tauri/build.rs 维护：源码/配置有变化触发重编译时自增 1（存 src-tauri/.build-id）
-//
-// 本脚本在 tauri build 的 beforeBuildCommand 中最先执行：
-//   读 .build-id = n → 把 tauri.conf.json 的 version 写为 <major.minor>.<n+1>
-// 时序保证一致：改 conf 本身会触发 build.rs 重跑（rerun-if-changed），本次编译
-// BUILD_ID 恰为 n+1 —— 安装包名与「我的」页显示的 V x.y.z 恒相同。
+//   BUILD_ID 唯一事实源 = 本脚本（beforeBuildCommand 第一步）：读 .build-id = n
+//   → +1 写回文件 + 写 tauri.conf.json version 为 <major.minor>.<n+1>。
+//   build.rs 只读 .build-id 注入 rustc-env，不自增——无论打包期间 build.rs
+//   重跑多少次，二进制内 BUILD_ID 恒等于文件名版本（曾因编译期自增漂移错位）。
 // （重大版本升级只改 Cargo.toml 的 major.minor，conf patch 位由本脚本自动维护。）
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,6 +24,9 @@ const minor = m[2];
 const idFile = join(root, "src-tauri/.build-id");
 const n = existsSync(idFile) ? parseInt(readFileSync(idFile, "utf8").trim(), 10) || 0 : 0;
 const next = n + 1;
+// 版本推进的唯一事实源在这里（build.rs 只读不自增）：写回文件让
+// build.rs 的 rustc-env=BUILD_ID 拿到同一值，包名 == 程序内显示版本
+writeFileSync(idFile, String(next));
 const ver = `${major}.${minor}.${next}`;
 
 const confPath = join(root, "src-tauri/tauri.conf.json");

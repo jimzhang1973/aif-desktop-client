@@ -89,15 +89,18 @@ fn main() {
     println!("cargo:rerun-if-changed=../package.json");
     println!("cargo:rerun-if-changed=../vite.config.ts");
 
-    // build-id：每次编译（源码有变化触发 build script 重跑）自增 1，
-    // 通过 cargo:rustc-env 注入，代码里用 env!("BUILD_ID") 读取。
-    // 计数文件放在 src-tauri/.build-id（随源码目录走，不入产物）。
+    // build-id：只读 .build-id 注入编译期 env（不自增！）。
+    // 自增已收归 scripts/sync-version.mjs（tauri build 的 beforeBuildCommand 第一步）：
+    // 打包前 +1 并写回文件，build.rs 重跑多少次都读同一值——安装包文件名与
+    // 程序内「我的」页显示版本恒一致（此前 build.rs 自增会在打包期间被多次
+    // rerun 漂移，导致包名 5.1.289 / 显示 5.1.304 的错位）。
+    // dev 模式（tauri dev）不再自增 BUILD_ID，版本号仅在打包时推进。
     let counter = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".build-id");
     let n: u64 = std::fs::read_to_string(&counter)
         .ok()
         .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-        + 1;
-    std::fs::write(&counter, n.to_string()).ok();
+        .unwrap_or(0);
     println!("cargo:rustc-env=BUILD_ID={n}");
+    // 文件被 sync-version 更新时触发本脚本重跑，让新值进入编译
+    println!("cargo:rerun-if-changed=.build-id");
 }

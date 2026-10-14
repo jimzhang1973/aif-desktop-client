@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "巨鹏软件客户端",
-  "version": "5.1.289",
+  "version": "5.1.308",
   "identifier": "cn.aif.desktopclient",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "node scripts/sync-version.mjs && npm run build"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/icon.ico",
       "icons/icon.icns",

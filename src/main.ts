@@ -1220,7 +1220,8 @@ void on<DiskProgressEvt>("disk-progress", (p) => {
 void on<string[]>("disk-upload-request", (paths) => {
   void (async () => {
     if (!paths?.length) return;
-    diskSt.pending = paths;
+    // 多选逐个文件回调时累加，避免后者覆盖前者（Single 模式每次仅一个路径）
+    diskSt.pending = Array.from(new Set([...diskSt.pending, ...paths]));
     const last = diskLastTarget();
     const pid = await api.diskPersonalSpaceId().catch(() => "");
     if (last && pid && last.spaceId === pid) {
@@ -2953,6 +2954,22 @@ async function loadSpaceList() {
   }
 }
 
+/// 人工固定置顶项：我的空间（点击跳转个人空间知识库页面 /knowledge/personal/view.htm）
+function mySpaceRow(): SpaceRow {
+  const base = (settings?.base_url || "").replace(/\/+$/, "");
+  const root = settings?.ops_product ? "AIF" : "DCP";
+  return {
+    id: "__my_space__",
+    name: "我的空间",
+    remark: "个人文件 · 知识库",
+    dept: "",
+    color: "#0ea5e9",
+    collected: true,
+    url: `${base}/${root}/knowledge/personal/view.htm`,
+  };
+}
+const MY_SPACE_ICON = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#0ea5e9"/><path d="M5 11.4 12 5l7 6.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 10.2V18h10.8v-7.8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 18v-4.6h4V18" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 /// 渲染空间列表（spacesCache + spaceSearch 本地过滤；搜索输入只走这里，不重新请求、焦点不丢）
 function renderSpaceList() {
   const list = document.getElementById("list");
@@ -2963,7 +2980,9 @@ function renderSpaceList() {
     s.name.toLowerCase().includes(kw) ||
     (s.dept || "").toLowerCase().includes(kw) ||
     (s.remark || "").toLowerCase().includes(kw);
-  const spaces = spacesCache.filter(hit);
+  // 「我的收藏」分类：人工置顶「我的空间」固定项（始终排最前；同样受搜索过滤）
+  const withMy = spaceSection === "starred" ? [mySpaceRow(), ...spacesCache] : spacesCache;
+  const spaces = withMy.filter(hit);
   if (!spaces.length) {
     list.innerHTML = `<div class="empty">${kw ? "没有匹配的空间" : spaceSection === "starred" ? "暂无收藏的空间" : "暂无可访问的空间"}</div>`;
     return;
@@ -2971,9 +2990,13 @@ function renderSpaceList() {
   list.innerHTML = spaces
     .map((s) => {
       const c = spaceColorOf(s.color);
+      const ico =
+        s.id === "__my_space__"
+          ? MY_SPACE_ICON
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5z"/></svg>`;
       return `
       <div class="list-item card" data-url="${esc(s.url)}" title="${esc(s.remark || s.name)}">
-        <div class="ico" style="color:${c};background:${c}1f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5z"/></svg></div>
+        <div class="ico" style="color:${c};background:${c}1f">${ico}</div>
         <div class="li-main">
           <div class="li-title">${esc(s.name)}${s.collected ? '<span class="star-mark" style="color:#f59e0b">★</span>' : ""}</div>
           <div class="li-sub">${esc([s.dept, s.remark].filter((x) => x && x !== "暂无说明").join(" · ") || " ")}</div>
@@ -3144,7 +3167,7 @@ function renderProfile(content: HTMLElement) {
       ${ico("#0ea5e9", `<path d="M7.5 15.5a3.3 3.3 0 0 1-.3-6.6 4.4 4.4 0 0 1 8.5-.9 3.4 3.4 0 0 1 1.4 6.5"/><path d="M12 17.5v-5.2M9.8 14.3l2.2-2.2 2.2 2.2"/>`)}
       <div class="set-main">
         <div class="set-title">资源管理器右键上传菜单</div>
-        <div class="set-desc">在文件右键菜单加入「上传到巨鹏个人空间」，支持多选文件；上传目标为网盘页上次使用的目录（Windows 11 位于"显示更多选项"二级菜单）</div>
+        <div class="set-desc">在文件右键菜单加入「上传到协作空间」，支持多选文件（逐个文件透传，保证全部进入上传队列）；上传目标为网盘页上次使用的目录（Windows 11 位于"显示更多选项"二级菜单）</div>
       </div>
       <label class="switch set-side"><input type="checkbox" id="set-ctxmenu" /><span class="track"></span><span class="thumb"></span></label>
     </div>

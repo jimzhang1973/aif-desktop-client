@@ -749,7 +749,7 @@ pub fn disk_context_menu_status() -> bool {
     }
 }
 
-/// 注册/注销资源管理器右键「上传到个人空间」（HKCU，免管理员；多选文件走 "%1" %*）
+/// 注册/注销资源管理器右键「上传到协作空间」（HKCU，免管理员；多选文件逐个调用 "%1"）
 #[tauri::command]
 pub fn disk_register_context_menu(enable: bool) -> Result<(), String> {
     #[cfg(windows)]
@@ -764,7 +764,7 @@ pub fn disk_register_context_menu(enable: bool) -> Result<(), String> {
                 &format!(r"HKCU\{REG_KEY}"),
                 "/ve",
                 "/d",
-                "上传到巨鹏个人空间",
+                "上传到协作空间",
                 "/f",
             ])?;
             reg_run(&[
@@ -782,16 +782,18 @@ pub fn disk_register_context_menu(enable: bool) -> Result<(), String> {
                 "/v",
                 "MultiSelectModel",
                 "/d",
-                "Player",
+                "Single",
                 "/f",
             ])?;
-            // 命令模板："<exe>" --upload "%1" %* —— %1 与 %* 会使首路径重复，启动时去重
+            // 命令模板："<exe>" --upload "%1"
+            // 采用 Single 模式：资源管理器对「每个选中文件」各调用一次本命令（%1 = 该文件），
+            // 不再依赖 %* 展开；这样即便 Win11 部分环境下 %* 不展开，也能保证 N 个文件全部进入上传队列
             reg_run(&[
                 "add",
                 &format!(r"HKCU\{REG_KEY}\command"),
                 "/ve",
                 "/d",
-                &format!(r#""{exe}" --upload "%1" %*"#),
+                &format!(r#""{exe}" --upload "%1""#),
                 "/f",
             ])?;
             Ok(())
@@ -827,7 +829,7 @@ fn reg_run(args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// 解析第二实例 argv：--upload 之后的全部文件路径（去重；"%1" %* 会使首路径重复）
+/// 解析第二实例 argv：--upload 之后的全部文件路径（去重；Single 模式下逐个文件回调，每次仅一个路径）
 pub fn extract_upload_paths(argv: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut iter = argv.iter().skip(1);

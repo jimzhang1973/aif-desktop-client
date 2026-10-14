@@ -39,7 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // 第二实例启动时聚焦已存在的待办窗（同样要抢前台）
             tray::raise_main(app);
-            // 资源管理器右键「上传到个人空间」：提取 --upload 文件路径转发主窗网盘页
+            // 资源管理器右键「上传到协作空间」：提取 --upload 文件路径转发主窗网盘页
             let paths = disk::extract_upload_paths(&argv);
             if !paths.is_empty() {
                 let _ = app.emit("disk-upload-request", paths);

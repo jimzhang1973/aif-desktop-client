@@ -200,11 +200,16 @@ async fn post_form(
     session: &str,
     form: &[(&str, &str)],
 ) -> Result<serde_json::Value, String> {
-    let mut req = client.post(&url).header("Cookie", session);
-    for (k, v) in form {
-        req = req.form(&[(k, v)]);
-    }
-    let resp = req.send().await.map_err(|e| e.to_string())?;
+    // 注意：RequestBuilder.form() 是整体替换而非追加——必须一次传全参数。
+    // 逐对循环调用会导致 body 只剩最后一对（findTreeByNodeId 只发了 spaceId，
+    // id/type 丢失 → B/S 返回空数组 → 树永远没有文件）。
+    let resp = client
+        .post(&url)
+        .header("Cookie", session)
+        .form(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("请求失败（HTTP {}）", resp.status().as_u16()));
     }

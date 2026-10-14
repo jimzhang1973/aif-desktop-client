@@ -118,3 +118,24 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   font-size: 11px; color: var(--text-3); margin-top: 1px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* ---------------- 助手：悬停「助手」按钮 → 卡片整体切换为可用智能体列表 ---------------- */
+/* 默认隐藏智能体节；#card.agents-only 时只显示智能体节 */
+#c-agents-sec { display: none; }
+#card.agents-only #c-agents-sec { display: block; }
+#card.agents-only > .c-sec:not(#c-agents-sec) { display: none; }
+/* 智能体行：页面同款图标（加载失败换首字母色块）+ 名称 + 描述 */
+.c-row .r-ico.i-ag {
+  width: 22px; height: 22px; margin-top: 0;
+  border-radius: 6px; overflow: hidden;
+  align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #fff;
+}
+.c-row .r-ico.i-ag img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.c-row .r-ico.i-ag .ag-fb { display: none; width: 100%; height: 100%; align-items: center; justify-content: center; }
+.c-row .r-ico.i-ag.no-img .ag-fb { display: flex; }
+.c-row .r-desc {
+  font-size: 11px; color: var(--text-3); margin-top: 1px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* 迷你条「助手」按钮：靛蓝主题（与主窗导航助手图标同色系） */
+.m-assist-ico { color: #6366f1; }

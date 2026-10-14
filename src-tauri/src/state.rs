@@ -62,6 +62,9 @@ pub struct Settings {
     /// 每日摘要推送时间 "HH:MM"（本地时间，默认 09:00）
     #[serde(default = "default_digest_time")]
     pub daily_digest_time: String,
+    /// 导航栏图标下显示 2 字功能名称（默认关闭：只显示图标）
+    #[serde(default)]
+    pub nav_show_labels: bool,
 }
 
 fn default_hotkey() -> String {
@@ -170,6 +173,7 @@ impl Default for Settings {
             todo_escalate_days: default_escalate_days(),
             daily_digest_enabled: false,
             daily_digest_time: default_digest_time(),
+            nav_show_labels: false,
         }
     }
 }

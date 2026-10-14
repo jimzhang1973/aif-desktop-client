@@ -37,6 +37,14 @@ interface OpsAppGroup {
   apps: OpsApp[];
 }
 
+/** 授权智能体（B/S「AI 问答」入口数据源，与主窗 get_ai_agents 同命令） */
+interface AiAgent {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
 const msgN = document.getElementById("m-msg-n")!;
 const todoN = document.getElementById("m-todo-n")!;
 const quickN = document.getElementById("m-quick-n")!;
@@ -50,9 +58,34 @@ const cOpsN = document.getElementById("c-ops-n")!;
 const cMsgs = document.getElementById("c-msgs")!;
 const cTodoN = document.getElementById("c-todo-n")!;
 const cMsgN = document.getElementById("c-msg-n")!;
+const assistBtn = document.getElementById("m-assist")!;
+const cAgents = document.getElementById("c-agents")!;
+const cAgentsN = document.getElementById("c-agents-n")!;
 
 // 产品形态：AIF（运维）才显示「应用」按钮与告警节；一表通 DCP 隐藏（null = 未拉取）
 let opsProduct: boolean | null = null;
+
+/** B/S 站点根（detectOpsProduct 时顺带缓存），用于拼智能体会话 URL */
+let baseUrl = "";
+/** 智能体列表缓存（5 分钟 TTL，避免每次悬停都打接口） */
+let agentCache: { at: number; agents: AiAgent[] } | null = null;
+const AGENT_TTL = 5 * 60_000;
+
+/** 智能体会话页（与主窗 agentChatUrl 同规则）：AI 模块仅部署在 AIF 域下 */
+function agentChatUrl(id: string): string {
+  return `${baseUrl}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`;
+}
+
+async function fetchAgents(): Promise<AiAgent[]> {
+  if (agentCache && Date.now() - agentCache.at < AGENT_TTL) return agentCache.agents;
+  try {
+    const agents = await invoke<AiAgent[]>("get_ai_agents");
+    agentCache = { at: Date.now(), agents };
+    return agents;
+  } catch {
+    return []; // 未登录/接口失败：静默为空，不打扰
+  }
+}
 
 function unreadIds(): string[] {
   try {
@@ -117,8 +150,9 @@ function onProductSwitched(): void {
 async function detectOpsProduct(): Promise<void> {
   if (opsProduct !== null) return;
   try {
-    const s = await invoke<{ ops_product?: boolean }>("get_settings");
+    const s = await invoke<{ ops_product?: boolean; base_url?: string }>("get_settings");
     opsProduct = !!s.ops_product;
+    if (s.base_url) baseUrl = s.base_url.replace(/\/+$/, "");
   } catch {
     opsProduct = false;
   }
@@ -221,15 +255,44 @@ async function renderCard(): Promise<void> {
   } catch {
     cMsgs.innerHTML = `<div class="c-empty">消息加载失败</div>`;
   }
+  // 可用智能体（悬停「助手」按钮时整卡切换为本节，其余节由 CSS 隐藏）
+  try {
+    const agents = await fetchAgents();
+    cAgentsN.textContent = String(agents.length);
+    cAgentsN.classList.toggle("hot", agents.length > 0);
+    cAgents.innerHTML = agents.length
+      ? agents
+          .map((a) => {
+            // 图标：页面同款图标，加载失败/缺失 → 首字母色块兜底（随接口图标更新）
+            const ico = a.icon
+              ? `<img src="${esc(a.icon)}" alt="" /><span class="ag-fb">${esc(a.name.slice(0, 1))}</span>`
+              : `<span class="ag-fb" style="display:flex">${esc(a.name.slice(0, 1))}</span>`;
+            return `<div class="c-row" data-url="${esc(agentChatUrl(a.id))}"><span class="r-ico i-ag${a.icon ? "" : " no-img"}">${ico}</span><div class="r-title">${esc(a.name)}${a.description ? `<div class="r-desc">${esc(a.description)}</div>` : ""}</div></div>`;
+          })
+          .join("")
+      : `<div class="c-empty">当前账号没有已授权的智能体</div>`;
+    // 图标加载失败 → 首字母兜底（内联 onerror 被 CSP 拦截，必须用监听器）
+    cAgents.querySelectorAll<HTMLElement>(".r-ico.i-ag").forEach((box) => {
+      const img = box.querySelector("img");
+      if (!img) return;
+      img.addEventListener("error", () => box.classList.add("no-img"));
+    });
+  } catch {
+    cAgents.innerHTML = `<div class="c-empty">智能体加载失败</div>`;
+  }
 }
 
 // 悬停显隐：条身划入展示，移出条身/卡片 250ms 后收起（缓冲防抖，允许在条↔卡间移动）
 // 点击任何按钮 → dismissCard 立即收起并挂起，直到鼠标离开后再次进入速览条才重新浮现
 let hideTimer = 0;
 let suppressCard = false;
+// 智能体视图：悬停「助手」按钮时卡片整体切换为可用智能体列表
+let agentMode = false;
 function showCard(): void {
   window.clearTimeout(hideTimer);
   suppressCard = false; // 重新进入速览条：解除挂起，恢复正常悬停显隐
+  agentMode = false; // 回到常规视图（智能体视图仅在悬停「助手」按钮时保持）
+  card.classList.remove("agents-only");
   void renderCard();
   card.classList.add("show");
   card.setAttribute("aria-hidden", "false");
@@ -271,6 +334,7 @@ function bindCardRows(root: HTMLElement): void {
 bindCardRows(cTodos);
 bindCardRows(cOps);
 bindCardRows(cMsgs);
+bindCardRows(cAgents);
 document.getElementById("c-panel")!.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "panel");
@@ -299,6 +363,29 @@ document.getElementById("m-quick")!.addEventListener("click", () => {
 opsBtn.addEventListener("click", () => {
   dismissCard();
   void emit("mini-navigate", "ops");
+});
+// 助手按钮：点击打开主窗「助手」页（智能体会话可从该页或悬停卡进入）
+assistBtn.addEventListener("click", () => {
+  dismissCard();
+  void emit("mini-navigate", "assistant");
+});
+// 悬停「助手」按钮：浮窗整体切换为可用智能体列表；移出恢复常规视图
+assistBtn.addEventListener("mouseenter", () => {
+  if (suppressCard) return;
+  agentMode = true;
+  card.classList.add("agents-only");
+  if (!card.classList.contains("show")) {
+    card.classList.add("show");
+    card.setAttribute("aria-hidden", "false");
+    void invoke("set_mini_card_visible", { visible: true });
+  }
+  void renderCard();
+});
+assistBtn.addEventListener("mouseleave", () => {
+  if (!agentMode) return;
+  agentMode = false;
+  card.classList.remove("agents-only");
+  if (card.classList.contains("show")) void renderCard(); // 恢复常规内容
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
 document.getElementById("m-close")!.addEventListener("click", () => {

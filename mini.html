@@ -20,6 +20,10 @@
         <div class="c-head">最新消息 <span class="c-badge" id="c-msg-n">0</span></div>
         <div class="c-rows" id="c-msgs"></div>
       </div>
+      <div class="c-sec" id="c-agents-sec">
+        <div class="c-head">可用智能体 <span class="c-badge" id="c-agents-n">0</span></div>
+        <div class="c-rows" id="c-agents"></div>
+      </div>
       <div class="c-foot" id="c-panel" title="打开主面板">打开面板 →</div>
     </div>
     <!-- data-tauri-drag-region：按住空白区可拖动位置（按钮为子元素不触发拖拽，点击行为不变） -->
@@ -47,6 +51,12 @@
       <button class="m-btn" id="m-ops" title="应用：点击打开应用中心" hidden>
         <span class="m-ico m-ops-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></span>
         <span class="m-count" id="m-ops-n"></span>
+      </button>
+      <!-- 助手：悬停把浮窗切换为可用智能体列表，点击打开主窗助手页 -->
+      <div class="m-sep"></div>
+      <button class="m-btn" id="m-assist" title="助手：悬停查看可用智能体，点击打开助手页">
+        <span class="m-ico m-assist-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8.5" width="14" height="10" rx="3"/><path d="M12 8.5V5.6"/><circle cx="12" cy="4.4" r="1.1"/><path d="M9.3 13.5h.01M14.7 13.5h.01"/></svg></span>
+        <span class="m-count" id="m-assist-n"></span>
       </button>
       <div class="m-sep"></div>
       <button class="m-btn m-close" id="m-close" title="关闭速览条（可在「我的」设置重新开启）">

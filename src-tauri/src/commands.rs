@@ -2034,51 +2034,78 @@ pub struct AiAgent {
     pub icon: String,
 }
 
-/// B/S 主页 AI 问答入口：POST ai/persona/agent/authorized.htm 返回当前账号
+/// B/S 主页 AI 问答入口：POST ai/agent/authorized.htm 返回当前账号
 /// 授权的智能体列表（[{id,name,description,icon}]）；前端拼
 /// ai/chat/index.htm?aiAgentId=<id> 在受控 webview 中打开问答页
 /// （B/S 原生行为：top.openNewTab(url, 'AI问答（name）', 'agentic_agent_'+id)）
 #[tauri::command]
 pub async fn get_ai_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AiAgent>, String> {
-    // B/S 原生写死 /AIF 前缀（matters.html 源码证实）：AI 模块仅部署在 AIF 域下，
-    // 一表通（DCP）产品同样访问 /AIF/ai/**，不能跟随 app_root()（否则 404）
-    let base = {
+    let (base, root) = {
         let s = state.settings.lock().unwrap();
-        s.base_url.trim_end_matches('/').to_string()
+        (
+            s.base_url.trim_end_matches('/').to_string(),
+            s.app_root().to_string(),
+        )
     };
     let session = auth::load_session().filter(|s| !s.is_empty()).ok_or("未登录")?;
 
-    let resp = state
-        .client
-        .post(format!("{base}/AIF/ai/persona/agent/authorized.htm"))
-        .header("Cookie", &session)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("获取智能体列表失败（HTTP {}，会话可能已过期）", resp.status().as_u16()));
+    // 数据源探测顺序：
+    // 1) /{产品根}/ai/agent/authorized.htm —— 新版智能体授权接口（DCP 为 /DCP/ai/agent/**）
+    // 2) /AIF/ai/persona/agent/authorized.htm —— 旧版接口（B/S 原生 matters.html 写死，
+    //    AI 模块仅部署在 AIF 域下；新版接口 404/非成功时自动回退）
+    let mut last_err = String::new();
+    for path in [
+        format!("/{root}/ai/agent/authorized.htm"),
+        "/AIF/ai/persona/agent/authorized.htm".to_string(),
+    ] {
+        let url = format!("{base}{path}");
+        match state
+            .client
+            .post(&url)
+            .header("Cookie", &session)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let text = resp.text().await.map_err(|e| e.to_string())?;
+                // mini.decode 兼容两种返回：裸 JSON 数组 / 字符串包裹的 JSON，逐层剥开
+                let mut val: serde_json::Value = serde_json::from_str(text.trim())
+                    .map_err(|e| format!("智能体数据解析失败: {e}"))?;
+                if let serde_json::Value::String(s) = &val {
+                    val = serde_json::from_str(s).map_err(|e| format!("智能体数据解析失败: {e}"))?;
+                }
+                if let Some(arr) = val.as_array() {
+                    let gstr = |o: &serde_json::Value, k: &str| -> String {
+                        o.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string()
+                    };
+                    let agents: Vec<AiAgent> = arr
+                        .iter()
+                        .map(|a| AiAgent {
+                            id: gstr(a, "id"),
+                            name: gstr(a, "name"),
+                            description: gstr(a, "description"),
+                            icon: gstr(a, "icon"),
+                        })
+                        .filter(|a| !a.id.is_empty())
+                        .collect();
+                    // 拿到非空列表即认为该数据源有效（空数组继续尝试下一数据源）
+                    if !agents.is_empty() {
+                        return Ok(agents);
+                    }
+                    last_err = format!("{path} 返回空列表");
+                } else {
+                    last_err = format!("{path} 数据格式异常（非数组）");
+                }
+            }
+            Ok(resp) => {
+                last_err = format!("{path} HTTP {}", resp.status().as_u16());
+            }
+            Err(e) => {
+                last_err = format!("{path} {e}");
+            }
+        }
     }
-    let text = resp.text().await.map_err(|e| e.to_string())?;
-    // mini.decode 兼容两种返回：裸 JSON 数组 / 字符串包裹的 JSON，逐层剥开
-    let mut val: serde_json::Value = serde_json::from_str(text.trim())
-        .map_err(|e| format!("智能体数据解析失败: {e}"))?;
-    if let serde_json::Value::String(s) = &val {
-        val = serde_json::from_str(s).map_err(|e| format!("智能体数据解析失败: {e}"))?;
-    }
-    let arr = val.as_array().ok_or("智能体数据格式异常（非数组）")?;
-    let gstr = |o: &serde_json::Value, k: &str| -> String {
-        o.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string()
-    };
-    Ok(arr
-        .iter()
-        .map(|a| AiAgent {
-            id: gstr(a, "id"),
-            name: gstr(a, "name"),
-            description: gstr(a, "description"),
-            icon: gstr(a, "icon"),
-        })
-        .filter(|a| !a.id.is_empty())
-        .collect())
+    Err(format!("获取智能体列表失败（{last_err}，会话可能已过期）"))
 }
 
 /// 关闭/隐藏「当前 webview」：B/S 页面里的 window.close() 由初始化脚本转交到这里。

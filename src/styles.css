@@ -638,6 +638,8 @@ input:focus, select:focus { border-color: var(--accent); }
   letter-spacing: 1px; margin-right: -1px; /* 抵消 letter-spacing 尾距，视觉居中 */
   opacity: 0.85;
 }
+/* 「显示导航栏名称」开关关闭（默认）：隐藏全部功能名称，只留图标 */
+.sidenav.hide-labels .nav-label { display: none; }
 .nav-btn:hover { color: var(--accent); background: var(--accent-weak); }
 .nav-btn.nav-bottom { margin-top: auto; }
 /* 双态图标：未选中=黑白框线（idle），选中=彩色实底（active），复用底部导航图标资产 */

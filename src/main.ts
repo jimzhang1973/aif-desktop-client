@@ -1,7 +1,7 @@
 import "./styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { api, on, type AccountEntry, type DocRow, type HistoryMessage, type MatterBadge, type MatterRow, type MessageRow, type OpsApp, type OpsAppGroup, type QuickEntry, type RoleOption, type Settings, type SpaceRow, type TabInfo, type TodoRow, type UserInfo } from "./api";
+import { api, on, type AccountEntry, type AiAgent, type DocRow, type HistoryMessage, type MatterBadge, type MatterRow, type MessageRow, type OpsApp, type OpsAppGroup, type QuickEntry, type RoleOption, type Settings, type SpaceRow, type TabInfo, type TodoRow, type UserInfo } from "./api";
 
 const app = document.getElementById("app")!;
 const win = getCurrentWindow();
@@ -9,7 +9,7 @@ const win = getCurrentWindow();
 let settings: Settings | null = null;
 let userInfo: UserInfo | null = null;
 let captchaRequired = false;
-let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "quick" | "profile" = "messages";
+let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "quick" | "assistant" | "profile" = "messages";
 let soundCache: Record<string, HTMLAudioElement> = {};
 // 应用版本号（5.0.1+build-id），启动时取一次
 let appVersion = "…";
@@ -772,6 +772,11 @@ const ICONS: Record<string, { active: string; idle: string }> = {
     active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#8b5cf6"/><g fill="#fff"><rect x="6.4" y="6.4" width="3.4" height="3.4" rx="0.9"/><rect x="10.3" y="6.4" width="3.4" height="3.4" rx="0.9"/><rect x="14.2" y="6.4" width="3.4" height="3.4" rx="0.9"/><rect x="6.4" y="10.3" width="3.4" height="3.4" rx="0.9"/><rect x="10.3" y="10.3" width="3.4" height="3.4" rx="0.9"/><rect x="14.2" y="10.3" width="3.4" height="3.4" rx="0.9"/><rect x="6.4" y="14.2" width="3.4" height="3.4" rx="0.9"/><rect x="10.3" y="14.2" width="3.4" height="3.4" rx="0.9"/><rect x="14.2" y="14.2" width="3.4" height="3.4" rx="0.9"/></g></svg>`,
     idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="6.2" height="6.2" rx="1.6"/><rect x="13.8" y="4" width="6.2" height="6.2" rx="1.6"/><rect x="4" y="13.8" width="6.2" height="6.2" rx="1.6"/><rect x="13.8" y="13.8" width="6.2" height="6.2" rx="1.6"/></svg>`,
   },
+  assistant: {
+    // 助手：AI 智能体（靛蓝，机器人造型）
+    active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#6366f1"/><g fill="#fff"><rect x="6.8" y="9" width="10.4" height="8" rx="2.4"/><circle cx="12" cy="5.4" r="1.1"/><rect x="11.3" y="6" width="1.4" height="2.2" rx="0.7"/></g><circle cx="9.9" cy="13" r="1.05" fill="#6366f1"/><circle cx="14.1" cy="13" r="1.05" fill="#6366f1"/></svg>`,
+    idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8.5" width="14" height="10" rx="3"/><path d="M12 8.5V5.6"/><circle cx="12" cy="4.4" r="1.1"/><path d="M9.3 13.5h.01M14.7 13.5h.01"/></svg>`,
+  },
   profile: {
     active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#10b981"/><circle cx="12" cy="9.6" r="3" fill="#fff"/><path d="M5.8 18.6c.9-2.6 3.3-4.1 6.2-4.1s5.3 1.5 6.2 4.1" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>`,
     idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.3" r="3.3"/><path d="M5.3 19.2c.9-2.9 3.5-4.6 6.7-4.6s5.8 1.7 6.7 4.6"/></svg>`,
@@ -802,6 +807,7 @@ function renderPanel() {
           <button class="nav-btn" data-tab="docs" title="文档"><span class="nav-ico idle">${ICONS.docs.idle}</span><span class="nav-ico active">${ICONS.docs.active}</span><span class="nav-label">文档</span></button>
           <button class="nav-btn" data-tab="spaces" title="空间"><span class="nav-ico idle">${ICONS.spaces.idle}</span><span class="nav-ico active">${ICONS.spaces.active}</span><span class="nav-label">空间</span></button>
           <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span><span class="nav-label">快捷</span></button>
+          <button class="nav-btn" data-tab="assistant" title="助手"><span class="nav-ico idle">${ICONS.assistant.idle}</span><span class="nav-ico active">${ICONS.assistant.active}</span><span class="nav-label">助手</span></button>
           <button class="nav-btn collapse-btn" id="btn-collapse" title="折叠列表页"><span class="nav-ico idle">${listCollapsed ? UNFOLD_LIST_SVG : FOLD_LIST_SVG}</span></button>
           <button class="nav-btn nav-bottom" data-tab="profile" title="我的"><span class="nav-ico idle">${ICONS.profile.idle}</span><span class="nav-ico active">${ICONS.profile.active}</span><span class="nav-label">我的</span></button>
         </nav>
@@ -822,6 +828,9 @@ function renderPanel() {
     if (t.closest("button, input, select, .poll-ico, .autohide-wrap, .mtab-wrap")) return;
     void win.startDragging();
   });
+
+  // 导航栏功能名称显隐（「我的 → 显示导航栏名称」，默认关闭）
+  applyNavLabels();
 
   document.getElementById("btn-hide")!.addEventListener("click", () => void win.hide());
   // 全屏/默认模式切换
@@ -896,7 +905,71 @@ function switchTab(tab: typeof currentTab) {
   else if (tab === "docs") renderDocs(content);
   else if (tab === "spaces") renderSpaces(content);
   else if (tab === "quick") void renderQuick(content);
+  else if (tab === "assistant") void renderAssistant(content);
   else renderProfile(content);
+}
+
+/** 导航栏功能名称显隐：sidenav 挂 .hide-labels 时隐藏全部 nav-label（图标尺寸不变） */
+function applyNavLabels(): void {
+  document.getElementById("sidenav")?.classList.toggle("hide-labels", !settings?.nav_show_labels);
+}
+
+/** 智能体会话页：B/S 原生行为 top.openNewTab('ai/chat/index.htm?aiAgentId='+id)。
+ *  AI 模块仅部署在 AIF 域下（与 get_ai_agents 数据源同域），两产品统一走 /AIF。 */
+function agentChatUrl(id: string): string {
+  const base = (settings?.base_url || "").replace(/\/+$/, "");
+  return `${base}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`;
+}
+
+/** 「助手」页：当前账号授权的 AI 智能体列表，点击在受控 webview 打开会话 */
+async function renderAssistant(content: HTMLElement) {
+  const PALETTE = ["#6366f1", "#14b8a6", "#8b5cf6", "#f59e0b", "#10b981", "#f43f5e", "#06b6d4", "#3b82f6"];
+  content.innerHTML = `
+    <div class="type-chips"><span class="type-chip active">可用智能体</span><span class="tb-spacer"></span>
+      <button class="icon-btn" id="asst-refresh" title="刷新智能体列表">⟳</button></div>
+    <div id="asst-list"><div class="empty">正在加载…</div></div>`;
+  const list = document.getElementById("asst-list")!;
+  const draw = (agents: AiAgent[]) => {
+    if (!agents.length) {
+      list.innerHTML = `<div class="empty">当前账号没有已授权的智能体</div>`;
+      return;
+    }
+    list.innerHTML = agents
+      .map((a, i) => {
+        const c = PALETTE[i % PALETTE.length];
+        const fb = `color:${c};background:${c}1f`; // 字母 fallback：主题色淡底 + 同色字
+        return `
+      <div class="list-item card asst-row" data-id="${esc(a.id)}" title="点击开始会话：${esc(a.name)}">
+        <div class="ico app-ico">${a.icon ? `<img src="${esc(a.icon)}" alt="" /><span class="app-ico-fallback" style="display:none;${fb}">${esc(a.name.slice(0, 1))}</span>` : `<span class="app-ico-fallback" style="${fb}">${esc(a.name.slice(0, 1))}</span>`}</div>
+        <div class="li-main">
+          <div class="li-title">${esc(a.name)}</div>
+          ${a.description ? `<div class="li-meta" title="${esc(a.description)}">${esc(a.description)}</div>` : ""}
+        </div>
+        <span class="arrow">›</span>
+      </div>`;
+      })
+      .join("");
+    // 图标加载失败 → 首字母兜底（内联 onerror 被 CSP 拦截，必须用监听器）
+    list.querySelectorAll<HTMLImageElement>(".app-ico img").forEach((img) =>
+      img.addEventListener("error", () => {
+        img.style.display = "none";
+        const fb = img.nextElementSibling as HTMLElement | null;
+        if (fb) fb.style.display = "";
+      }),
+    );
+    list.querySelectorAll<HTMLElement>(".asst-row").forEach((row) =>
+      row.addEventListener("click", () => void openUrl(agentChatUrl(row.dataset.id || ""))),
+    );
+  };
+  try {
+    const agents = await api.getAiAgents();
+    draw(agents);
+  } catch (e) {
+    list.innerHTML = `<div class="empty">智能体列表加载失败：${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
+  }
+  document.getElementById("asst-refresh")!.addEventListener("click", () => {
+    void renderAssistant(content);
+  });
 }
 
 // ---------------- 列表搜索框（移动端风格） ----------------
@@ -2229,6 +2302,11 @@ function renderProfile(content: HTMLElement) {
       <label class="switch set-side"><input type="checkbox" id="set-multi-entry" ${s.multi_entry ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
     <div class="set-row">
+      ${ico("#f97316", `<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M4 9.5h16"/><path d="M9 9.5V21"/>`)}
+      <div class="set-main"><div class="set-title">显示导航栏名称</div><div class="set-desc">左侧导航栏图标下方显示 2 字功能名称（默认关闭：只显示图标）</div></div>
+      <label class="switch set-side"><input type="checkbox" id="set-nav-labels" ${s.nav_show_labels ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
+    </div>
+    <div class="set-row">
       ${ico("#f43f5e", `<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>`)}
       <div class="set-main">
         <div class="set-title">勿扰时段</div>
@@ -2336,6 +2414,15 @@ function renderProfile(content: HTMLElement) {
     void updateEntryLabel(); // 内部联动 updateEntryBtn 控制顶栏显隐
     void api.saveSettings(settings).catch(() =>
       toast("多入口切换状态保存失败，请点击「保存设置」重试"),
+    );
+  });
+  // 「显示导航栏名称」拨动即生效：导航栏功能名称立刻显隐并持久化（不等「保存设置」）
+  document.getElementById("set-nav-labels")!.addEventListener("change", (e) => {
+    if (!settings) return;
+    settings.nav_show_labels = (e.target as HTMLInputElement).checked;
+    applyNavLabels();
+    void api.saveSettings(settings).catch(() =>
+      toast("导航栏名称设置保存失败，请点击「保存设置」重试"),
     );
   });
   // 「迷你速览条」拨动即生效：创建/关闭右缘常置小窗，状态存 localStorage（重启恢复）
@@ -2826,6 +2913,7 @@ async function saveSettings() {
   settings.autostart = (document.getElementById("set-autostart") as HTMLInputElement).checked;
   settings.tab_restore = (document.getElementById("set-tab-restore") as HTMLInputElement).checked;
   settings.multi_entry = (document.getElementById("set-multi-entry") as HTMLInputElement).checked;
+  settings.nav_show_labels = (document.getElementById("set-nav-labels") as HTMLInputElement).checked;
   // 提醒规则：勿扰时段 / 静音关键词 / 待办超时提醒
   settings.notify_dnd_enabled = (document.getElementById("set-dnd") as HTMLInputElement).checked;
   settings.notify_dnd_start = (document.getElementById("set-dnd-start") as HTMLInputElement).value || "22:00";
@@ -2915,6 +3003,8 @@ async function main() {
     else if (target === "quick") switchTab("quick");
     // 速览条「应用」按钮（仅 AIF）：切到主窗应用中心
     else if (target === "ops") switchTab("ops");
+    // 速览条「助手」按钮：切到主窗助手（智能体）页
+    else if (target === "assistant") switchTab("assistant");
     // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
     else if (/^https?:/i.test(target)) void openUrl(target);
     else console.warn("[mini-navigate] 未识别的目标:", target);

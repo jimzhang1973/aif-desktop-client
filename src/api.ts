@@ -89,6 +89,8 @@ export interface Settings {
   daily_digest_enabled: boolean;
   /** 每日摘要推送时间 "HH:MM"（默认 09:00） */
   daily_digest_time: string;
+  /** 导航栏图标下显示 2 字功能名称（默认 false：只显示图标） */
+  nav_show_labels: boolean;
 }
 
 export interface UserInfo {

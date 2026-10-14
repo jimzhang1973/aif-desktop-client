@@ -1149,9 +1149,10 @@ function sanitizeDiskName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-/** 加载空间：全量拉取目录树。实测 findTreeByNodeId 忽略 id 参数、一次返回整棵空间树
- *  （目录+文件节点一并带回），故只发一次请求；若个别部署只返回部分子树，未被覆盖的
- *  目录保持「未加载」态，展开/级联时自动补拉兜底。查看/级联全部读内存。 */
+/** 加载空间：拉取目录树。实测 findTreeByNodeId（id=某根目录）返回「全部 subject 节点 +
+ *  该根目录子树下的全部文件」，即目录结构一次到位、文件只随所查目录返回——
+ *  故初始只查第一个根（其余根的文件在点击展开/级联勾选时动态补拉，见 diskFetchChildren）。
+ *  未覆盖的目录保持「未加载」态；查看/级联命中内存时零请求。 */
 async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.spaceId = spaceId;
   diskSt.loaded.clear();
@@ -1278,7 +1279,8 @@ function diskRenderTree(): void {
       if (n.nodeType === "subject") {
         const kids = diskSt.children.get(n.id);
         const hasKids = diskSt.loaded.has(n.id) ? !!kids?.length : !n.isLeaf;
-        const open = diskSt.expanded.has(n.id);
+        // 展开箭头只在子节点实际渲染时才指向下方；已展开但子列表未拉取时保持 ▸
+        const open = diskSt.expanded.has(n.id) && !!kids?.length;
         const chk = diskSt.checked.has(n.id) ? " checked" : "";
         parts.push(
           `<div class="disk-tree-item" data-id="${esc(n.id)}" style="padding-left:${8 + depth * 14}px" title="${esc(n.name)}">` +
@@ -1315,11 +1317,19 @@ function diskRenderTree(): void {
       const node = diskSt.flat.get(id);
       if (!node) return;
       if (node.nodeType === "subject") {
-        // 目录行：单击任意位置（箭头/图标/名称）= 展开/收起（通用目录树行为）
-        const opening = !diskSt.expanded.has(id);
-        if (opening) diskSt.expanded.add(id);
-        else diskSt.expanded.delete(id);
-        void diskExpand(node, opening);
+        // 目录行单击：
+        // 子列表未加载（findTreeByNodeId 的文件只随所查目录返回，未点过的目录是空的）
+        // → 无论当前展开与否，点击一律=拉取子列表并展开，绝不收起；
+        // 已加载 → 正常切换展开/收起。
+        if (!diskSt.loaded.has(id)) {
+          diskSt.expanded.add(id);
+          void diskExpand(node, true);
+        } else {
+          const opening = !diskSt.expanded.has(id);
+          if (opening) diskSt.expanded.add(id);
+          else diskSt.expanded.delete(id);
+          void diskExpand(node, opening);
+        }
       } else if (node.subtype === "FILE") {
         // 点文件名 = 切换勾选
         const chkEl = el.querySelector<HTMLInputElement>(".d-chk");

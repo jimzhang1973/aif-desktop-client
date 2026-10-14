@@ -1088,3 +1088,33 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-log-row { font-size: 11.5px; line-height: 1.7; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-log-row.ok { color: #15803d; }
 .disk-log-row.bad { color: #dc2626; }
+
+/* 传输管理器抽屉（类浏览器下载管理器） */
+.disk-btn .badge { display: none; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px; border-radius: 8px; background: #dc2626; color: #fff; font-size: 10px; line-height: 16px; text-align: center; vertical-align: middle; }
+.disk-drawer { position: fixed; top: 0; right: 0; height: 100%; width: 340px; max-width: 86vw; background: var(--bg, #fff); border-left: 1px solid var(--border); box-shadow: -4px 0 16px rgba(0, 0, 0, .12); transform: translateX(100%); transition: transform .2s ease; z-index: 60; display: flex; flex-direction: column; }
+.dark .disk-drawer { background: var(--bg, #1e1e1e); }
+.disk-drawer.open { transform: none; }
+.tf-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.tf-close { border: none; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--text-3, #888); }
+.tf-list { flex: 1; overflow: auto; padding: 8px 10px; }
+.tf-task { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; background: var(--bg-2, #fafafa); }
+.dark .tf-task { background: var(--bg-2, #262626); }
+.tf-task.st-failed { border-color: #fca5a5; }
+.tf-task.st-partial { border-color: #fcd34d; }
+.tf-task.st-done { border-color: #86efac; }
+.tf-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.tf-arrow { font-weight: 700; }
+.tf-target { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-status { color: var(--text-3, #888); font-size: 11px; white-space: nowrap; }
+.tf-bar { height: 4px; background: var(--border); border-radius: 2px; margin: 6px 0; overflow: hidden; }
+.tf-fill { height: 100%; background: #2563eb; transition: width .2s; }
+.st-done .tf-fill { background: #16a34a; }
+.st-failed .tf-fill { background: #dc2626; }
+.st-partial .tf-fill { background: #d97706; }
+.tf-items { list-style: none; margin: 4px 0 0; padding: 0; max-height: 120px; overflow: auto; font-size: 11px; }
+.tf-items li.ok { color: #15803d; }
+.tf-items li.bad { color: #dc2626; }
+.tf-items li.muted { color: var(--text-3, #888); }
+.tf-msg { color: #b91c1c; }
+.tf-retry { margin-top: 6px; font-size: 11px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #222); cursor: pointer; }
+.dark .tf-retry { background: var(--bg, #1e1e1e); color: var(--text, #ddd); }

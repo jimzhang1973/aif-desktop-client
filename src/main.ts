@@ -1015,6 +1015,148 @@ const diskSt = {
 /** 正在上传的目标目录 id（上传完成后刷新该目录子树） */
 let diskUploadSubjectId = "";
 
+// ---------------- 传输管理器（右侧抽屉：进行中 + 历史可回看） ----------------
+type TransferItem = { name: string; ok: boolean; msg: string };
+type TransferMeta = { raw?: DiskDlItem[]; dest?: string; subjectId?: string };
+type TransferTask = {
+  id: string;
+  kind: "upload" | "download";
+  target: string; // 下载=本地目录；上传=目标目录名
+  total: number;
+  done: number;
+  status: "running" | "done" | "failed" | "partial";
+  startedAt: number;
+  items: TransferItem[]; // 逐文件结果
+  meta: TransferMeta;
+};
+let diskTransfers: TransferTask[] = [];
+const diskActiveTask: Record<"upload" | "download", string> = { upload: "", download: "" };
+
+function diskTransferLoad(): void {
+  try {
+    const raw = JSON.parse(localStorage.getItem("aif_disk_transfers") || "[]") as TransferTask[];
+    for (const t of raw) if (t.status === "running") t.status = "failed"; // 重载后残留的运行态视为中断
+    diskTransfers = raw.slice(0, 50);
+  } catch {
+    diskTransfers = [];
+  }
+}
+function diskTransferPersist(): void {
+  try {
+    localStorage.setItem("aif_disk_transfers", JSON.stringify(diskTransfers.slice(0, 50)));
+  } catch {
+    /* 忽略持久化失败 */
+  }
+}
+function diskTransferStart(kind: "upload" | "download", target: string, total: number, meta: TransferMeta = {}): TransferTask {
+  const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta };
+  diskTransfers.unshift(task);
+  diskActiveTask[kind] = task.id;
+  diskTransferBadge();
+  diskTransferRender();
+  diskTransferPersist();
+  return task;
+}
+function diskTransferFind(kind: "upload" | "download"): TransferTask | undefined {
+  const id = diskActiveTask[kind];
+  return id ? diskTransfers.find((t) => t.id === id) : undefined;
+}
+function diskTransferItem(kind: "upload" | "download", name: string, ok: boolean, msg: string, done?: number, total?: number): void {
+  const t = diskTransferFind(kind);
+  if (!t) return;
+  const ex = t.items.find((i) => i.name === name);
+  if (ex) {
+    ex.ok = ok;
+    ex.msg = msg;
+  } else {
+    t.items.push({ name, ok, msg });
+  }
+  if (typeof done === "number") t.done = done;
+  if (typeof total === "number") t.total = total;
+  diskTransferBadge();
+  diskTransferRender();
+}
+function diskTransferFinish(kind: "upload" | "download", total: number): void {
+  const t = diskTransferFind(kind);
+  diskActiveTask[kind] = "";
+  if (!t) return;
+  t.total = total || t.total;
+  t.done = t.total;
+  const failed = t.items.filter((i) => !i.ok).length;
+  t.status = failed === 0 ? "done" : failed >= t.items.length ? "failed" : "partial";
+  if (!t.items.length) t.status = "failed"; // 从未收到逐文件事件（启动即失败）归为失败
+  diskTransferBadge();
+  diskTransferRender();
+  if (failed > 0) toast(`「${t.kind === "download" ? "下载" : "上传"}」完成，${failed} 个失败`);
+  diskTransferPersist();
+}
+function diskTransferFailStart(id: string, err: string): void {
+  const t = diskTransfers.find((x) => x.id === id);
+  if (!t) return;
+  t.status = "failed";
+  t.items.push({ name: "启动失败", ok: false, msg: err.replace(/^"|"$/g, "") });
+  diskTransferBadge();
+  diskTransferRender();
+  diskTransferPersist();
+}
+function diskTransferBadge(): void {
+  const el = document.getElementById("disk-transfer-badge");
+  if (!el) return;
+  const n = diskTransfers.filter((t) => t.status === "running" || t.status === "failed" || t.status === "partial").length;
+  el.textContent = n ? String(n) : "";
+  el.style.display = n ? "" : "none";
+}
+function diskTransferRender(): void {
+  const el = document.getElementById("disk-transfer-list");
+  if (!el) return;
+  if (!diskTransfers.length) {
+    el.innerHTML = `<div class="empty">暂无传输记录</div>`;
+    return;
+  }
+  el.innerHTML = diskTransfers
+    .map((t) => {
+      const failed = t.items.filter((i) => !i.ok);
+      const okCnt = t.items.length - failed.length;
+      const pct = t.total ? Math.round((t.done / t.total) * 100) : t.status === "running" ? 0 : 100;
+      const statusTxt =
+        t.status === "done"
+          ? "全部成功"
+          : t.status === "partial"
+            ? `部分完成（${okCnt} 成功 / ${failed.length} 失败）`
+            : t.status === "failed"
+              ? "失败"
+              : "进行中…";
+      const arrow = t.kind === "download" ? "↓" : "↑";
+      const target = t.kind === "download" ? `下载到 ${t.target}` : `上传到 ${t.target}`;
+      const itemsHtml = t.items
+        .map((i) => `<li class="${i.ok ? "ok" : "bad"}">${esc(i.name)}${i.msg && !i.ok ? `：<span class="tf-msg">${esc(i.msg)}</span>` : ""}</li>`)
+        .join("");
+      const retryBtn =
+        t.kind === "download" && t.meta.raw && failed.length
+          ? `<button class="tf-retry" data-id="${t.id}">重试 ${failed.length} 个失败项</button>`
+          : "";
+      return `<div class="tf-task st-${t.status}">
+        <div class="tf-head"><span class="tf-arrow">${arrow}</span><span class="tf-target" title="${esc(target)}">${esc(target)}</span><span class="tf-status">${statusTxt}</span></div>
+        <div class="tf-bar"><div class="tf-fill" style="width:${pct}%"></div></div>
+        <ul class="tf-items">${itemsHtml || `<li class="muted">（暂无逐文件明细）</li>`}</ul>
+        ${retryBtn}
+      </div>`;
+    })
+    .join("");
+  el.querySelectorAll<HTMLButtonElement>(".tf-retry").forEach((b) =>
+    b.addEventListener("click", () => void diskRetryDownload(b.dataset.id!)),
+  );
+}
+async function diskRetryDownload(id: string): Promise<void> {
+  const t = diskTransfers.find((x) => x.id === id);
+  if (!t || !t.meta.raw || !t.meta.dest) return toast("缺少重试信息");
+  const failedNames = new Set(t.items.filter((i) => !i.ok).map((i) => i.name));
+  const items = t.meta.raw.filter((r) => failedNames.has(r.name));
+  if (!items.length) return toast("没有可重试的失败项");
+  await diskDownloadItems(items, t.meta.dest);
+}
+diskTransferLoad(); // 恢复本地持久化的传输历史
+
 interface DiskProgressEvt {
   kind: "upload" | "download";
   file: string;
@@ -1052,6 +1194,7 @@ void on<DiskProgressEvt>("disk-progress", (p) => {
   // 完成事件：Rust 以 file="全部完成"、msg="" 标记（非逐文件事件），据此触发目录刷新
   if (p.file === "全部完成") {
     diskLog(`${tag}：全部完成（${p.total} 个）`, true);
+    diskTransferFinish(p.kind, p.total);
     // 上传完成 → 展开并重拉目标目录子树，使刚上传的文件立即可见
     if (p.kind === "upload" && diskUploadSubjectId) {
       const node = diskSt.flat.get(diskUploadSubjectId);
@@ -1063,6 +1206,8 @@ void on<DiskProgressEvt>("disk-progress", (p) => {
     }
     return;
   }
+  // 逐文件事件：写入传输管理器（与底部轻量日志并存）
+  if (p.file) diskTransferItem(p.kind, p.file, p.ok, p.msg || "", p.done, p.total);
   if (!p.ok && p.msg) diskLog(`${tag} ✗ ${p.file}：${p.msg}`, false);
   else if (p.msg) diskLog(`${tag} ✓ ${p.file}（${p.done}/${p.total}）`, true);
 });
@@ -1097,12 +1242,17 @@ async function renderDisk(content: HTMLElement) {
         <select id="disk-space" class="disk-select" title="选择空间"></select>
         <span class="disk-hint" id="disk-hint">点目录名展开/收起；勾选目录 = 级联选中其下全部文件</span>
         <span class="tb-spacer"></span>
+        <button class="disk-btn ghost" id="disk-transfer" title="传输管理器">传输<span class="badge" id="disk-transfer-badge"></span></button>
         <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>↑ 上传</button>
         <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>↓ 下载</button>
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
       <div class="disk-log" id="disk-log"></div>
+      <div class="disk-drawer" id="disk-drawer">
+        <div class="tf-header">传输管理器<button class="tf-close" id="disk-drawer-close" title="关闭">×</button></div>
+        <div class="tf-list" id="disk-transfer-list"></div>
+      </div>
     </div>`;
   // 空间下拉：个人空间 + 有权限的空间
   const sel = document.getElementById("disk-space") as HTMLSelectElement;
@@ -1128,6 +1278,17 @@ async function renderDisk(content: HTMLElement) {
   sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
+  // 传输管理器抽屉
+  document.getElementById("disk-transfer")!.addEventListener("click", () => {
+    const dw = document.getElementById("disk-drawer")!;
+    dw.classList.toggle("open");
+    if (dw.classList.contains("open")) diskTransferRender();
+  });
+  document.getElementById("disk-drawer-close")!.addEventListener("click", () =>
+    document.getElementById("disk-drawer")!.classList.remove("open"),
+  );
+  diskTransferBadge();
+  diskTransferRender();
   document.getElementById("disk-up")!.addEventListener("click", () => {
     const d = diskFirstCheckedDir();
     if (!d) return toast("请先在树上勾选一个目标目录");
@@ -1590,10 +1751,12 @@ async function diskUploadTo(subject: DiskNode): Promise<void> {
     diskTargetKey(),
     JSON.stringify({ spaceId: diskSt.spaceId, subjectId: subject.id, name: subject.name }),
   );
+  const task = diskTransferStart("upload", subject.name, paths.length, { subjectId: subject.id });
   toast(`开始上传 ${paths.length} 个文件到「${subject.name}」`);
   try {
     await api.diskUploadFiles(diskSt.spaceId, subject.id, paths);
   } catch (e) {
+    diskTransferFailStart(task.id, String(e));
     toast(`上传启动失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
   }
 }
@@ -1607,10 +1770,17 @@ async function diskDownload(items: DiskDlItem[]): Promise<void> {
     return;
   }
   if (!dest) return;
+  await diskDownloadItems(items, dest);
+}
+
+/** 执行下载（内部/重试复用）：登记传输任务 → 调 Rust 队列 */
+async function diskDownloadItems(items: DiskDlItem[], dest: string): Promise<void> {
+  const task = diskTransferStart("download", dest, items.length, { raw: items, dest });
   try {
     await api.diskDownloadFiles(items, dest);
     toast(`开始下载 ${items.length} 个文件`);
   } catch (e) {
+    diskTransferFailStart(task.id, String(e));
     toast(`下载启动失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
   }
 }

@@ -462,8 +462,10 @@ pub fn disk_download_files(
                 }
                 format!("{base}/{root}/nonlogin/{meta}&mode=download")
             } else {
+                // 在线文档导出：DOC→DOCX；MARKDOWN→MD 保留原文（实测 exportType=MD 返回 UTF-8 纯文本）
+                let export_type = if item.subtype == "MARKDOWN" { "MD" } else { "DOCX" };
                 format!(
-                    "{base}/{root}/nonlogin/knowledge/transfer/download.htm?id={}&type=0&exportType=DOCX",
+                    "{base}/{root}/nonlogin/knowledge/transfer/download.htm?id={}&type=0&exportType={export_type}",
                     item.article_id
                 )
             };

@@ -3061,15 +3061,16 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         return Ok(());
     }
     // 主屏右缘、垂直居中（逻辑坐标 = 物理像素 / 缩放比）。
-    // 窗口 340×340 透明容器：可见条（40×270）absolute 贴右缘，悬停预览卡向左展开；
-    // 340 > Windows 无边框窗口最小宽限制（~134），不会被系统放宽。
+    // 窗口 340×400 透明容器：可见条（40×auto，含面板/消息/待办/快捷/应用/助手/关闭
+    // 七钮，内容高约 358 逻辑px）absolute 贴右缘，悬停预览卡向左展开；
+    // 宽 340 > Windows 无边框窗口最小宽限制（~134），不会被系统放宽。
     let monitor = app.primary_monitor().ok().flatten();
     let (x, y) = match &monitor {
         Some(m) => {
             let scale = m.scale_factor();
             let w = m.size().width as f64 / scale;
             let h = m.size().height as f64 / scale;
-            (w - 8.0 - 340.0, ((h - 340.0) / 2.0).max(8.0))
+            (w - 8.0 - 340.0, ((h - 400.0) / 2.0).max(8.0))
         }
         None => (0.0, 0.0),
     };
@@ -3083,7 +3084,7 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         .shadow(false)
         // 透明窗口：圆角外/卡片未展开区域完全透明
         .transparent(true)
-        .inner_size(340.0, 340.0)
+        .inner_size(340.0, 400.0)
         .position(x, y)
         .build()
         .map_err(|e| format!("创建速览条失败: {e}"))?;
@@ -3102,7 +3103,7 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
             let sw = m.size().width as f64 / scale;
             let sh = m.size().height as f64 / scale;
             let px = sw - 8.0 - win_w;
-            let py = ((sh - 340.0) / 2.0).max(8.0);
+            let py = ((sh - 400.0) / 2.0).max(8.0);
             let _ = win.set_position(tauri::LogicalPosition::new(px, py));
         }
         // 初始整窗穿透：透明容器不拦截下层窗口点击；光标进入条身后由轮询恢复交互

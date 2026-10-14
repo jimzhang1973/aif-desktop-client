@@ -11,12 +11,13 @@
 html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
 body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; position: relative; }
 /*
- * 窗口为 340×340 透明容器（Rust 侧），可见元素全部绝对定位：
- * 条贴右缘 40×270；悬停预览卡在条左侧展开（280 宽）。
+ * 窗口为 340×400 透明容器（Rust 侧），可见元素全部绝对定位：
+ * 条贴右缘 40×auto（内容高约 358：面板/消息/待办/快捷/应用/助手/关闭 七钮）；
+ * 悬停预览卡在条左侧展开（280 宽）。
  */
 #mini {
   position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-  width: 40px; height: auto; max-height: 310px; overflow: hidden;
+  width: 40px; height: auto; max-height: 380px; overflow: hidden;
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 4px; padding: 6px 3px;
   /* 半透明白底 + 背景模糊：窗口本身 transparent(true)，透出桌面 */
@@ -30,7 +31,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
 /* ---------------- 悬停预览卡 ---------------- */
 #card {
   position: absolute; right: 48px; top: 50%;
-  width: 280px; max-height: 336px;
+  width: 280px; max-height: 380px;
   transform: translateY(-50%) translateX(8px);
   opacity: 0; pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s ease;

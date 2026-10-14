@@ -2988,7 +2988,8 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
         return Ok(());
     }
     #[cfg(not(target_os = "macos"))]
-    let existing = app.get_webview_window("mini-bar");
+    {
+        let existing = app.get_webview_window("mini-bar");
     if !enable {
         if let Some(w) = existing {
             let _ = w.close();
@@ -3048,5 +3049,6 @@ pub async fn toggle_mini_bar(app: AppHandle, enable: bool) -> Result<(), String>
     }
     // 启动光标轮询，按需在「穿透 ↔ 可交互」间切换
     spawn_mini_hit_test_poller(app);
-    Ok(())
+        Ok(())
+    }
 }

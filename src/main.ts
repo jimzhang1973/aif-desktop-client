@@ -1252,9 +1252,9 @@ async function renderDisk(content: HTMLElement) {
         <span class="disk-hint" id="disk-hint">点目录名展开/收起；勾选目录 = 级联选中其下全部文件</span>
         <span class="tb-spacer"></span>
         <button class="disk-btn ghost" id="disk-transfer" title="日志">日志<span class="badge" id="disk-transfer-badge"></span></button>
-        <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>↑ 上传</button>
-        <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>↓ 下载</button>
-        <button class="disk-btn danger" id="disk-del" title="删除选中的文件与目录（在线文档除外）" disabled>🗑 删除</button>
+        <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>上传</button>
+        <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>下载</button>
+        <button class="disk-btn danger" id="disk-del" title="删除选中的文件与目录（在线文档除外）" disabled>🗑</button>
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>

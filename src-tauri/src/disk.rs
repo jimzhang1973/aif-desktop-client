@@ -736,6 +736,7 @@ pub fn disk_upload_files(
 
 /// 删除结果汇总
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiskDeleteItem {
     pub id: String,
     pub kind: String, // "file" | "dir"
@@ -744,6 +745,7 @@ pub struct DiskDeleteItem {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiskDeleteResult {
     pub deleted_files: u32,
     pub deleted_dirs: u32,

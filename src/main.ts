@@ -1851,7 +1851,9 @@ async function diskDeleteSelected(): Promise<void> {
   // 登记传输管理器任务（删除=一次性同步，无逐文件进度事件，结束后直接结算）
   const total = files.length + dirs.length + onlineDocs.length;
   const task = diskTransferStart("delete", `${files.length + dirs.length} 项`, total, {});
-  const nameOf = (id: string) => diskSt.flat.get(id)?.name ?? id;
+  // 删除前先捕获 id→名称映射：删除+刷新树后 diskSt.flat 里已无这些节点，届时再查只会拿到 id
+  const nameById = new Map<string, string>();
+  for (const n of [...files, ...dirs, ...onlineDocs]) nameById.set(n.id, n.name);
   try {
     const res = await api.diskDelete(
       files.map((f) => f.id),
@@ -1859,10 +1861,10 @@ async function diskDeleteSelected(): Promise<void> {
     );
     // 刷新树（被删节点消失）；刷新发生在记录结果之前，故下方日志不会被清掉
     await diskLoadSpace(diskSt.spaceId);
-    // 逐条结论（文件/目录成功 ✓ / 失败 ✗）
-    for (const it of res.items) task.items.push({ name: nameOf(it.id), ok: it.ok, msg: it.msg ?? "" });
+    // 逐条结论（文件/目录成功 ✓ / 失败 ✗），名称用删除前捕获的映射
+    for (const it of res.items) task.items.push({ name: nameById.get(it.id) ?? it.id, ok: it.ok, msg: it.msg ?? "" });
     // 在线文档：标记「已排除」（muted，不计入失败）
-    for (const o of onlineDocs) task.items.push({ name: o.name, ok: false, msg: "在线文档(已排除)", muted: true });
+    for (const o of onlineDocs) task.items.push({ name: nameById.get(o.id) ?? o.name, ok: false, msg: "在线文档(已排除)", muted: true });
     diskTransferFinish("delete", task.items.length);
     if (onlineDocs.length) diskLog(`在线文档不允许删除：${onlineDocs.map((o) => o.name).join("、")}`, false);
     if (res.failed.length) diskLog(`删除部分失败：${res.failed.join("；")}`, false);

@@ -75,6 +75,9 @@ pub struct DiskDlItem {
     pub name: String,
     #[serde(rename = "relDir", default)]
     pub rel_dir: String,
+    /// 文章类型：FILE=附件（findById→filepath 直下）；其余=在线文档（transfer/download.htm 导出 DOCX）
+    #[serde(default)]
+    pub subtype: String,
 }
 
 /// 进度事件负载（emit "disk-progress"）
@@ -398,7 +401,8 @@ async fn download_to(
     Ok(())
 }
 
-/// 批量下载 FILE 文章到本地目录（逐文件流式；进度 emit "disk-progress"）
+/// 批量下载文章到本地目录（FILE 附件直下原始文件；在线文档经 B/S 导出接口转 DOCX；
+/// 逐文件流式，进度 emit "disk-progress"）
 #[tauri::command]
 pub fn disk_download_files(
     app: AppHandle,
@@ -429,32 +433,56 @@ pub fn disk_download_files(
                 ok: false,
                 msg,
             };
-            // 1) 取元数据拿 filepath
-            let meta = match post_form(
-                &client,
-                format!("{base}/{root}/knowledge/article/findById.htm"),
-                &session,
-                &[("id", item.article_id.as_str())],
-            )
-            .await
-            {
-                Ok(v) => filepath_of(&v),
-                Err(e) => {
-                    let _ = app.emit("disk-progress", fail(format!("获取文件信息失败: {e}")));
+            // 1) 解析下载 URL：
+            //    FILE 附件 → findById 拿 filepath，直下原始文件；
+            //    在线文档（DOC/MARKDOWN/EXCEL/RICHTEXT…）→ B/S 官方导出接口，服务端转 DOCX
+            //    （detail.htm onExport 实测链路：nonlogin/knowledge/transfer/download.htm?id=&type=0&exportType=DOCX）
+            let is_file = item.subtype == "FILE";
+            let url = if is_file {
+                let meta = match post_form(
+                    &client,
+                    format!("{base}/{root}/knowledge/article/findById.htm"),
+                    &session,
+                    &[("id", item.article_id.as_str())],
+                )
+                .await
+                {
+                    Ok(v) => filepath_of(&v),
+                    Err(e) => {
+                        let _ = app.emit("disk-progress", fail(format!("获取文件信息失败: {e}")));
+                        continue;
+                    }
+                };
+                if meta.is_empty() {
+                    let _ = app.emit(
+                        "disk-progress",
+                        fail("附件下载路径为空（该文章可能无附件）".into()),
+                    );
                     continue;
                 }
+                format!("{base}/{root}/nonlogin/{meta}&mode=download")
+            } else {
+                format!(
+                    "{base}/{root}/nonlogin/knowledge/transfer/download.htm?id={}&type=0&exportType=DOCX",
+                    item.article_id
+                )
             };
-            if meta.is_empty() {
-                let _ = app.emit(
-                    "disk-progress",
-                    fail("非文件型文档（在线文档请到网页端打开）".into()),
-                );
-                continue;
-            }
-            // 2) 流式下载
-            let url = format!("{base}/{root}/nonlogin/{meta}&mode=download");
+            // 2) 流式下载（导出接口无权限/异常时会返回 HTML 错误页，按 Content-Type 识别拦截）
             match client.get(&url).header("Cookie", &session).send().await {
                 Ok(resp) if resp.status().is_success() => {
+                    let ct = resp
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if ct.contains("text/html") {
+                        let _ = app.emit(
+                            "disk-progress",
+                            fail("服务端返回错误页（可能无下载/导出权限）".into()),
+                        );
+                        continue;
+                    }
                     let dir = if item.rel_dir.is_empty() {
                         dest.clone()
                     } else {

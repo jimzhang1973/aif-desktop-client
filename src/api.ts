@@ -287,6 +287,8 @@ export interface DiskDlItem {
   articleId: string;
   name: string;
   relDir: string;
+  /** FILE=附件直下；其余=在线文档（服务端转 DOCX 导出） */
+  subtype: string;
 }
 
 export function on<T>(event: string, cb: (p: T) => void): Promise<UnlistenFn> {

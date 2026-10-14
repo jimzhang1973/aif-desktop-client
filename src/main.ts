@@ -1131,7 +1131,7 @@ async function renderDisk(content: HTMLElement) {
   document.getElementById("disk-dl")!.addEventListener("click", () => {
     void (async () => {
       const items = diskCheckedDlItems();
-      if (!items.length) return toast("勾选中没有可下载的文件（在线文档请在网页端打开）");
+      if (!items.length) return toast("请先在树上勾选要下载的文件或目录");
       await diskDownload(items);
     })();
   });
@@ -1453,7 +1453,7 @@ function diskUpdateButtons(): void {
   }
   if (dl) {
     dl.disabled = diskSt.checked.size === 0;
-    dl.title = "下载勾选的文件（含勾选目录级联的文件）";
+    dl.title = "下载勾选的文件（附件直下；在线文档由服务端转 DOCX 导出）";
   }
   const hint = document.getElementById("disk-hint");
   if (hint) {
@@ -1467,15 +1467,22 @@ function diskUpdateButtons(): void {
 }
 
 /** 汇总勾选 → 下载任务列表。
- *  勾选文件直接加入；勾选目录展开为其子树 FILE（unchecked 分支剪枝），
- *  且仅当文件的最远勾选祖先就是该目录时归属它（避免与子目录重复/冲突） */
+ *  勾选文件直接加入；勾选目录展开为其子树文件（unchecked 分支剪枝），
+ *  且仅当文件的最远勾选祖先就是该目录时归属它（避免与子目录重复/冲突）。
+ *  FILE 附件下载原始文件（真实后缀名）；在线文档走 B/S 导出接口（虚拟后缀 .docx/.md…，
+ *  实际下载时服务端统一转 DOCX） */
 function diskCheckedDlItems(): DiskDlItem[] {
   const out: DiskDlItem[] = [];
   const seen = new Set<string>();
   const add = (n: DiskNode) => {
-    if (n.nodeType !== "article" || n.subtype !== "FILE" || seen.has(n.id)) return;
+    if (n.nodeType !== "article" || seen.has(n.id)) return;
     seen.add(n.id);
-    out.push({ articleId: n.id, name: diskFileName(n), relDir: diskRelDir(n) });
+    out.push({
+      articleId: n.id,
+      name: n.subtype === "FILE" ? diskFileName(n) : diskFileDisplay(n).name,
+      relDir: diskRelDir(n),
+      subtype: n.subtype,
+    });
   };
   for (const id of diskSt.checked) {
     const n = diskSt.flat.get(id);

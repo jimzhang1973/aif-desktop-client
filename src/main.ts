@@ -1049,17 +1049,22 @@ function diskLog(line: string, ok: boolean): void {
 // 进度事件：上传/下载统一打到底部日志（页面不存在时忽略）
 void on<DiskProgressEvt>("disk-progress", (p) => {
   const tag = p.kind === "upload" ? "上传" : "下载";
-  if (!p.ok && p.msg) diskLog(`${tag} ✗ ${p.file}：${p.msg}`, false);
-  else if (p.msg && p.msg !== "全部完成") diskLog(`${tag} ✓ ${p.file}（${p.done}/${p.total}）`, true);
-  if (p.msg === "全部完成") {
+  // 完成事件：Rust 以 file="全部完成"、msg="" 标记（非逐文件事件），据此触发目录刷新
+  if (p.file === "全部完成") {
     diskLog(`${tag}：全部完成（${p.total} 个）`, true);
-    // 上传完成 → 重拉目标目录子树（新文件入库后回显）
+    // 上传完成 → 展开并重拉目标目录子树，使刚上传的文件立即可见
     if (p.kind === "upload" && diskUploadSubjectId) {
-      diskSt.loaded.delete(diskUploadSubjectId);
       const node = diskSt.flat.get(diskUploadSubjectId);
-      if (node) void diskReloadSubtree(node);
+      if (node) {
+        diskSt.expanded.add(node.id);
+        diskSt.loaded.delete(node.id);
+        void diskReloadSubtree(node);
+      }
     }
+    return;
   }
+  if (!p.ok && p.msg) diskLog(`${tag} ✗ ${p.file}：${p.msg}`, false);
+  else if (p.msg) diskLog(`${tag} ✓ ${p.file}（${p.done}/${p.total}）`, true);
 });
 
 // 资源管理器右键「上传到个人空间」：第二实例转发文件路径。

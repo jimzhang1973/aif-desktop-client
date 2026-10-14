@@ -18,7 +18,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
   position: absolute; right: 0; top: 50%; transform: translateY(-50%);
   width: 40px; height: 310px; overflow: hidden;
   display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 6px; padding: 8px 3px;
+  justify-content: center; gap: 4px; padding: 6px 3px;
   /* 半透明白底 + 背景模糊：窗口本身 transparent(true)，透出桌面 */
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(10px);
@@ -82,9 +82,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
 .c-foot:hover { background: rgba(59, 109, 240, 0.12); }
 .m-sep { flex: none; width: 20px; height: 1px; background: #9aa3b2; }
 .m-btn {
-  flex: none; width: 32px; height: 50px; border: none; border-radius: 9px;
+  flex: none; width: 32px; height: 44px; border: none; border-radius: 9px;
   background: transparent; cursor: pointer; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 3px; padding: 0;
+  align-items: center; justify-content: center; gap: 2px; padding: 0;
   transition: background 0.15s;
 }
 /* 打开面板：浅灰实体按钮，一眼可辨「这是按钮」 */
@@ -109,3 +109,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif; po
 .m-quick-ico { color: #7c3aed; }
 .m-count { font-size: 12px; font-weight: 600; color: var(--text-3); line-height: 1; }
 .m-count.hot { color: var(--danger); }
+/* 应用（仅 AIF）：青绿主题；卡片告警节：警示红图标 + 灰色事件文本 */
+.m-ops-ico { color: #0d9488; }
+.c-row .r-ico.i-ops { color: var(--danger); }
+.c-row .r-event {
+  font-size: 11px; color: var(--text-3); margin-top: 1px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}

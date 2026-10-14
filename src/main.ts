@@ -2910,6 +2910,8 @@ async function main() {
     if (target === "messages" || target === "todos") switchTab(target as typeof currentTab);
     // 速览条「快捷功能」按钮：切到主窗快捷功能页
     else if (target === "quick") switchTab("quick");
+    // 速览条「应用」按钮（仅 AIF）：切到主窗应用中心
+    else if (target === "ops") switchTab("ops");
     // 卡片行带 URL：直达对应页面（消息/待办办理页，走 openUrl 统一开 tab）
     else if (/^https?:/i.test(target)) void openUrl(target);
     else console.warn("[mini-navigate] 未识别的目标:", target);

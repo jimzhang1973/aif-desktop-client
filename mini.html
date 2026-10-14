@@ -12,6 +12,10 @@
         <div class="c-head">待办 <span class="c-badge" id="c-todo-n">0</span></div>
         <div class="c-rows" id="c-todos"></div>
       </div>
+      <div class="c-sec" id="c-ops-sec" hidden>
+        <div class="c-head">告警应用 <span class="c-badge hot" id="c-ops-n">0</span></div>
+        <div class="c-rows" id="c-ops"></div>
+      </div>
       <div class="c-sec">
         <div class="c-head">最新消息 <span class="c-badge" id="c-msg-n">0</span></div>
         <div class="c-rows" id="c-msgs"></div>
@@ -37,6 +41,12 @@
       <button class="m-btn" id="m-quick" title="快捷功能：点击打开快捷功能页">
         <span class="m-ico m-quick-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.8 13.2h6L10.9 22l8.3-11.2h-6z"/></svg></span>
         <span class="m-count" id="m-quick-n">0</span>
+      </button>
+      <!-- 应用（仅 AIF 运维产品显示，DCP 隐藏；由 mini.ts 按 get_settings().ops_product 控制） -->
+      <div class="m-sep"></div>
+      <button class="m-btn" id="m-ops" title="应用：点击打开应用中心" hidden>
+        <span class="m-ico m-ops-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></span>
+        <span class="m-count" id="m-ops-n"></span>
       </button>
       <div class="m-sep"></div>
       <button class="m-btn m-close" id="m-close" title="关闭速览条（可在「我的」设置重新开启）">

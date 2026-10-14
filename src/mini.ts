@@ -23,14 +23,36 @@ interface MessageRow {
   muted?: boolean;
 }
 
+interface OpsApp {
+  id: string;
+  name: string;
+  status: "normal" | "alert";
+  event: string;
+  url: string;
+}
+
+interface OpsAppGroup {
+  id: string;
+  name: string;
+  apps: OpsApp[];
+}
+
 const msgN = document.getElementById("m-msg-n")!;
 const todoN = document.getElementById("m-todo-n")!;
 const quickN = document.getElementById("m-quick-n")!;
+const opsBtn = document.getElementById("m-ops")!;
+const opsN = document.getElementById("m-ops-n")!;
 const card = document.getElementById("card")!;
 const cTodos = document.getElementById("c-todos")!;
+const cOpsSec = document.getElementById("c-ops-sec")!;
+const cOps = document.getElementById("c-ops")!;
+const cOpsN = document.getElementById("c-ops-n")!;
 const cMsgs = document.getElementById("c-msgs")!;
 const cTodoN = document.getElementById("c-todo-n")!;
 const cMsgN = document.getElementById("c-msg-n")!;
+
+// 产品形态：AIF（运维）才显示「应用」按钮与告警节；一表通 DCP 隐藏（null = 未拉取）
+let opsProduct: boolean | null = null;
 
 function unreadIds(): string[] {
   try {
@@ -56,11 +78,16 @@ function paint(msg: number, todo: number) {
 }
 
 async function refresh() {
+  void detectOpsProduct();
   paint(unreadCount(), await todoCount());
   // 快捷功能数量：主窗加载列表后写入共享 localStorage（aif_quick_count）
   const qc = Number(localStorage.getItem("aif_quick_count") || "0");
   quickN.textContent = String(Number.isFinite(qc) ? qc : 0);
   quickN.classList.toggle("hot", qc > 0);
+  // 应用告警数（仅 AIF）：有告警亮红，无告警置灰
+  const alarms = await alertApps();
+  opsN.textContent = String(alarms.length);
+  opsN.classList.toggle("hot", alarms.length > 0);
 }
 
 async function todoCount(): Promise<number> {
@@ -69,6 +96,30 @@ async function todoCount(): Promise<number> {
     return rows.filter((t) => !t.done).length;
   } catch {
     return 0;
+  }
+}
+
+/** 运维产品识别（仅拉取一次）：AIF 显示应用按钮/告警节，DCP 隐藏 */
+async function detectOpsProduct(): Promise<void> {
+  if (opsProduct !== null) return;
+  try {
+    const s = await invoke<{ ops_product?: boolean }>("get_settings");
+    opsProduct = !!s.ops_product;
+  } catch {
+    opsProduct = false;
+  }
+  opsBtn.hidden = !opsProduct;
+  cOpsSec.hidden = !opsProduct;
+}
+
+/** 告警应用列表（status==="alert" 的应用，含告警事件文本） */
+async function alertApps(): Promise<OpsApp[]> {
+  if (!opsProduct) return [];
+  try {
+    const groups = await invoke<OpsAppGroup[]>("get_ops_apps");
+    return groups.flatMap((g) => g.apps.filter((a) => a.status === "alert"));
+  } catch {
+    return []; // 未登录/接口失败：不打扰，静默为空
   }
 }
 
@@ -97,6 +148,8 @@ function fmtTime(ts: number): string {
 /** 卡片行前置图标（16px 内联 SVG）：待办=清单、消息=信封（未读变红） */
 const ICON_TODO = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 5.5 1 1 2-2"/><path d="m4 11.5 1 1 2-2"/><path d="m4 17.5 1 1 2-2"/></svg>`;
 const ICON_MSG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 15.5z"/><path d="m4.5 7 7.5 5 7.5-5"/></svg>`;
+/** 告警应用行前置图标：警示三角 */
+const ICON_ALERT = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.8 19.5h18.4z"/><path d="M12 10v4.2"/><path d="M12 17h.01"/></svg>`;
 
 /** 渲染预览卡内容：待办未办结 Top3 + 本地库最新 3 条消息（未读图标变红） */
 async function renderCard(): Promise<void> {
@@ -117,6 +170,23 @@ async function renderCard(): Promise<void> {
       : `<div class="c-empty">暂无待办 🎉</div>`;
   } catch {
     cTodos.innerHTML = `<div class="c-empty">待办加载失败</div>`;
+  }
+  // 告警应用（仅 AIF）：有告警事件的应用列表，点击直达应用页
+  if (opsProduct) {
+    try {
+      const alarms = await alertApps();
+      cOpsN.textContent = String(alarms.length);
+      cOps.innerHTML = alarms.length
+        ? alarms
+            .map(
+              (a) =>
+                `<div class="c-row" data-url="${esc(a.url)}"><span class="r-ico i-ops">${ICON_ALERT}</span><div class="r-title">${esc(a.name)}${a.event ? `<div class="r-event">${esc(a.event)}</div>` : ""}</div></div>`,
+            )
+            .join("")
+        : `<div class="c-empty">暂无告警 🎉</div>`;
+    } catch {
+      cOps.innerHTML = `<div class="c-empty">告警加载失败</div>`;
+    }
   }
   // 消息（本地轮询存档，最新在前）
   try {
@@ -185,6 +255,7 @@ function bindCardRows(root: HTMLElement): void {
   });
 }
 bindCardRows(cTodos);
+bindCardRows(cOps);
 bindCardRows(cMsgs);
 document.getElementById("c-panel")!.addEventListener("click", () => {
   dismissCard();
@@ -209,6 +280,11 @@ document.getElementById("m-quick")!.addEventListener("click", () => {
   dismissCard();
   console.info("[mini] 快捷功能点击 → emit mini-navigate=quick");
   void emit("mini-navigate", "quick");
+});
+// 应用（仅 AIF）：切到主窗「应用中心」页
+opsBtn.addEventListener("click", () => {
+  dismissCard();
+  void emit("mini-navigate", "ops");
 });
 // 关闭：先广播状态（主窗记 localStorage），再自关窗口
 document.getElementById("m-close")!.addEventListener("click", () => {

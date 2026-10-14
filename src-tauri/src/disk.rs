@@ -155,6 +155,15 @@ fn sanitize_name(name: &str) -> String {
         .collect()
 }
 
+/// 树接口防御：若 B/S 用 {data:[...]} 包裹数组则解包
+fn unwrap_data(val: serde_json::Value) -> serde_json::Value {
+    if val.get("data").map(|d| d.is_array()).unwrap_or(false) {
+        val["data"].clone()
+    } else {
+        val
+    }
+}
+
 /// 解析 B/S 树节点 JSON 数组 → DiskNode 列表
 fn parse_nodes(val: &serde_json::Value) -> Vec<DiskNode> {
     let arr = match val.as_array() {
@@ -271,7 +280,7 @@ pub async fn disk_tree(
         &[("spaceId", space_id.as_str())],
     )
     .await?;
-    Ok(parse_nodes(&val))
+    Ok(parse_nodes(&unwrap_data(val)))
 }
 
 /// 子树扁平节点列表（subject + article 混排；article 带 pid/pids/subtype）
@@ -295,7 +304,7 @@ pub async fn disk_nodes(
         ],
     )
     .await?;
-    Ok(parse_nodes(&val))
+    Ok(parse_nodes(&unwrap_data(val)))
 }
 
 /// FILE 型文章元数据（下载需要 filepath）

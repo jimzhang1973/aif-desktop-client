@@ -1124,7 +1124,7 @@ async function renderDisk(content: HTMLElement) {
   const last = diskLastTarget();
   sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
-  document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value, true));
+  document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-up")!.addEventListener("click", () => {
     if (!diskSt.selected) return toast("请先在左侧选择目录");
     void diskUploadTo(diskSt.selected);
@@ -1165,17 +1165,17 @@ function sanitizeDiskName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_");
 }
 
-/** 加载空间：拉根树并默认选中第一个目录 */
-async function diskLoadSpace(spaceId: string, fresh = false): Promise<void> {
+/** 加载空间：拉根树并默认选中第一个目录。切换空间必须清 roots，否则沿用旧空间树不刷新 */
+async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.spaceId = spaceId;
   diskSt.loaded.clear();
   diskSt.children.clear();
   diskSt.flat.clear();
   diskSt.expanded.clear();
   diskSt.checked.clear();
-  if (fresh) diskSt.roots = [];
+  diskSt.roots = [];
   try {
-    if (!diskSt.roots.length) diskSt.roots = await api.diskTree(spaceId);
+    diskSt.roots = await api.diskTree(spaceId);
   } catch (e) {
     document.getElementById("disk-tree")!.innerHTML =
       `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
@@ -1188,12 +1188,15 @@ async function diskLoadSpace(spaceId: string, fresh = false): Promise<void> {
   else document.getElementById("disk-list")!.innerHTML = `<div class="empty">该空间没有目录</div>`;
 }
 
-/** 拉取节点子列表（B/S 返回整树扁平列表；此处只取直接子节点，全量灌入 flat） */
+/** 拉取节点子列表（B/S 返回整树扁平列表；此处只取直接子节点，全量灌入 flat）。
+ *  直接子节点判定：pid 精确匹配，或 pids 祖先链包含父 id（实测部分 subject 节点不带 pid 字段） */
 async function diskFetchChildren(subjectId: string): Promise<DiskNode[]> {
   if (diskSt.loaded.has(subjectId)) return diskSt.children.get(subjectId) || [];
   const all = await api.diskNodes(diskSt.spaceId, subjectId, "subject");
   for (const n of all) diskSt.flat.set(n.id, n);
-  const kids = all.filter((n) => n.pid === subjectId);
+  const kids = all.filter(
+    (n) => n.id !== subjectId && (n.pid === subjectId || (n.pids || "").split(",").includes(subjectId)),
+  );
   diskSt.children.set(subjectId, kids);
   diskSt.loaded.add(subjectId);
   return kids;

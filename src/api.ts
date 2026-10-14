@@ -262,6 +262,8 @@ export const _apiRaw = {
     invoke<void>("disk_upload_files", { spaceId, subjectId, paths }),
   diskDownloadFiles: (items: DiskDlItem[], destDir: string) =>
     invoke<void>("disk_download_files", { items, destDir }),
+  diskDelete: (articleIds: string[], subjectIds: string[]) =>
+    invoke<DiskDeleteResult>("disk_delete", { articleIds, subjectIds }),
   diskRegisterContextMenu: (enable: boolean) => invoke<void>("disk_register_context_menu", { enable }),
   diskContextMenuStatus: () => invoke<boolean>("disk_context_menu_status"),
 };
@@ -289,6 +291,13 @@ export interface DiskDlItem {
   relDir: string;
   /** FILE=附件直下；其余=在线文档（服务端转 DOCX 导出） */
   subtype: string;
+}
+
+/** 删除结果汇总（先删文件，后删目录；在线文档由前端调用前排除） */
+export interface DiskDeleteResult {
+  deletedFiles: number;
+  deletedDirs: number;
+  failed: string[];
 }
 
 export function on<T>(event: string, cb: (p: T) => void): Promise<UnlistenFn> {

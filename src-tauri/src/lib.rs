@@ -136,6 +136,7 @@ pub fn run() {
             commands::get_quick_entries,
             disk::disk_article_meta,
             disk::disk_context_menu_status,
+            disk::disk_delete,
             disk::disk_download_files,
             disk::disk_nodes,
             disk::disk_personal_space_id,

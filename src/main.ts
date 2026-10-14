@@ -1249,10 +1249,21 @@ async function renderDisk(content: HTMLElement) {
         <button class="disk-btn ghost" id="disk-transfer" title="日志">日志<span class="badge" id="disk-transfer-badge"></span></button>
         <button class="disk-btn" id="disk-up" title="先在树上勾选一个目标目录" disabled>↑ 上传</button>
         <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled>↓ 下载</button>
+        <button class="disk-btn danger" id="disk-del" title="删除选中的文件与目录（在线文档除外）" disabled>🗑 删除</button>
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
       <div class="disk-log" id="disk-log"></div>
+      <div class="disk-confirm" id="disk-confirm" hidden>
+        <div class="dc-box">
+          <div class="dc-title" id="dc-title"></div>
+          <div class="dc-msg" id="dc-msg"></div>
+          <div class="dc-actions">
+            <button class="disk-btn danger" id="dc-ok">删除</button>
+            <button class="disk-btn ghost" id="dc-cancel">取消</button>
+          </div>
+        </div>
+      </div>
       <div class="disk-drawer" id="disk-drawer">
         <div class="tf-header">日志<button class="tf-close" id="disk-drawer-close" title="关闭">×</button></div>
         <div class="tf-list" id="disk-transfer-list"></div>
@@ -1318,6 +1329,7 @@ async function renderDisk(content: HTMLElement) {
       await diskDownload(items);
     })();
   });
+  document.getElementById("disk-del")!.addEventListener("click", () => void diskDeleteSelected());
   await diskLoadSpace(sel.value);
 }
 
@@ -1587,18 +1599,22 @@ async function diskToggleCheck(id: string, on: boolean): Promise<void> {
     return;
   }
   if (on) {
-    // 级联前先确保子树已加载（未展开的目录也要拉全），并清除子树的显式取消记录
-    try {
-      await diskEnsureSubtree(node);
-    } catch (e) {
-      diskLog(`级联读取「${node.name}」失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
-    }
-    const under = diskCollectUnder(node.id);
-    for (const k of under) diskSt.unchecked.delete(k.id);
-    // 级联勾选：父目录下的全部子目录与文档（含在线文档）一并选中；
-    // 在线文档是否可下载由 diskCheckedDlItems 的 dlType 白名单决定（不可下者给出详情页提示）
-    for (const k of under) {
-      if (k.nodeType === "subject" || k.nodeType === "article") diskSt.checked.add(k.id);
+    // 右键上传待选目标（diskSt.pending 有值）时，仅勾选该目录本身，不级联下级
+    // （此时是在「选上传目标」，勾选下级会造成误选、与下载语义冲突）
+    if (diskSt.pending.length === 0) {
+      // 级联前先确保子树已加载（未展开的目录也要拉全），并清除子树的显式取消记录
+      try {
+        await diskEnsureSubtree(node);
+      } catch (e) {
+        diskLog(`级联读取「${node.name}」失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
+      }
+      const under = diskCollectUnder(node.id);
+      for (const k of under) diskSt.unchecked.delete(k.id);
+      // 级联勾选：父目录下的全部子目录与文档（含在线文档）一并选中；
+      // 在线文档是否可下载由 diskCheckedDlItems 的 dlType 白名单决定（不可下者给出详情页提示）
+      for (const k of under) {
+        if (k.nodeType === "subject" || k.nodeType === "article") diskSt.checked.add(k.id);
+      }
     }
   } else {
     for (const k of diskCollectUnder(node.id)) diskSt.checked.delete(k.id);
@@ -1643,6 +1659,11 @@ function diskUpdateButtons(): void {
   if (dl) {
     dl.disabled = diskSt.checked.size === 0;
     dl.title = "下载勾选的文件（附件直下原始文件；在线文档 DOC/RICHTEXT→docx、MD→md 原文、Excel→xlsx）";
+  }
+  const del = document.getElementById("disk-del") as HTMLButtonElement | null;
+  if (del) {
+    del.disabled = diskSt.checked.size === 0;
+    del.title = "删除选中的文件与目录（在线文档不允许删除）";
   }
   const hint = document.getElementById("disk-hint");
   if (hint) {
@@ -1795,6 +1816,73 @@ async function diskDownloadItems(items: DiskDlItem[], dest: string): Promise<voi
     diskTransferFailStart(task.id, String(e));
     toast(`下载启动失败：${esc(String(e).replace(/^"|"$/g, ""))}`);
   }
+}
+
+/** 删除：收集勾选项 → 排除在线文档（写入日志「在线文档不允许删除」）→ 二次确认 →
+ *  先删文件后删目录 → 刷新树。在线文档由前端调用前排除，绝不进删除请求。 */
+async function diskDeleteSelected(): Promise<void> {
+  const files: DiskNode[] = [];
+  const onlineDocs: DiskNode[] = [];
+  const dirs: DiskNode[] = [];
+  for (const id of diskSt.checked) {
+    const n = diskSt.flat.get(id);
+    if (!n) continue;
+    if (n.nodeType === "subject") dirs.push(n);
+    else if (n.subtype === "FILE") files.push(n);
+    else onlineDocs.push(n); // 在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL/COLLEXCEL…）
+  }
+  if (onlineDocs.length) {
+    diskLog(`在线文档不允许删除：${onlineDocs.map((o) => o.name).join("、")}`, false);
+  }
+  if (!files.length && !dirs.length) {
+    toast(onlineDocs.length ? "您勾选的是在线文档，不允许删除" : "请先勾选要删除的文件或目录");
+    return;
+  }
+  const ok = await diskConfirm(
+    "删除确认",
+    `将删除 ${files.length} 个文件、${dirs.length} 个目录（在线文档 ${onlineDocs.length} 个已排除，不删除）。此操作不可恢复，确定继续？`,
+  );
+  if (!ok) return;
+  try {
+    const res = await api.diskDelete(
+      files.map((f) => f.id),
+      dirs.map((d) => d.id),
+    );
+    // 刷新树（被删节点消失）；刷新发生在记录结果之前，故下方日志不会被清掉
+    await diskLoadSpace(diskSt.spaceId);
+    if (onlineDocs.length) diskLog(`在线文档不允许删除：${onlineDocs.map((o) => o.name).join("、")}`, false);
+    if (res.failed.length) diskLog(`删除部分失败：${res.failed.join("；")}`, false);
+    diskLog(`删除完成：文件 ${res.deletedFiles} 个、目录 ${res.deletedDirs} 个`, true);
+    toast(
+      `删除完成（文件 ${res.deletedFiles}、目录 ${res.deletedDirs}${res.failed.length ? `，${res.failed.length} 个失败` : ""}）`,
+    );
+  } catch (e) {
+    diskLog(`删除失败：${esc(String(e).replace(/^"|"$/g, ""))}`, false);
+    toast("删除失败，详见日志");
+  }
+}
+
+/** 网盘内轻量确认弹窗（不依赖外部 dialog 插件，保证可用） */
+function diskConfirm(title: string, msg: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const box = document.getElementById("disk-confirm");
+    if (!box) return resolve(false);
+    (document.getElementById("dc-title") as HTMLElement).textContent = title;
+    (document.getElementById("dc-msg") as HTMLElement).textContent = msg;
+    box.hidden = false;
+    const ok = document.getElementById("dc-ok")!;
+    const cancel = document.getElementById("dc-cancel")!;
+    const done = (v: boolean) => {
+      box.hidden = true;
+      ok.removeEventListener("click", onOk);
+      cancel.removeEventListener("click", onCancel);
+      resolve(v);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    ok.addEventListener("click", onOk);
+    cancel.addEventListener("click", onCancel);
+  });
 }
 
 // ---------------- 列表搜索框（移动端风格） ----------------

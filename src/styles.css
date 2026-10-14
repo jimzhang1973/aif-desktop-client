@@ -1123,3 +1123,15 @@ input:focus, select:focus { border-color: var(--accent); }
 .tf-msg { color: #b91c1c; }
 .tf-retry { margin-top: 6px; font-size: 11px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #222); cursor: pointer; }
 .dark .tf-retry { background: var(--bg, #1e1e1e); color: var(--text, #ddd); }
+
+/* 网盘删除确认弹窗 */
+.disk-confirm { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 80; }
+.disk-confirm[hidden] { display: none; }
+.dc-box { width: min(420px, 86vw); background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); padding: 18px 18px 14px; }
+.dark .dc-box { background: #232323; }
+.dc-title { font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+.dc-msg { font-size: 13px; line-height: 1.6; color: var(--text-2, #555); white-space: pre-wrap; }
+.dc-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.disk-btn.danger { color: #fff; background: #dc2626; border-color: #dc2626; }
+.disk-btn.danger:hover { background: #b91c1c; }
+.dark .disk-btn.danger { color: #fff; }

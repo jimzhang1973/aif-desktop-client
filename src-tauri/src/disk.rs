@@ -732,6 +732,124 @@ pub fn disk_upload_files(
     Ok(())
 }
 
+// ---------- 删除 ----------
+
+/// 删除结果汇总
+#[derive(serde::Serialize)]
+pub struct DiskDeleteResult {
+    pub deleted_files: u32,
+    pub deleted_dirs: u32,
+    pub failed: Vec<String>,
+}
+
+/// 删除选中的文件（文章）与目录（subject）：先删文件，再删目录。
+/// 在线文档（非 FILE 文章）由前端在调用前排除，本命令只接收可删除的 id。
+///
+/// B/S 删除端点（2026-10-14 推断，未实测——见 docs 标注「删除是高危语义/未实测」）：
+///   文章（附件 FILE）：{root}/knowledge/article/delete.htm
+///   目录（subject）：  {root}/knowledge/space/deleteSubject.htm
+/// 若实际端点不同，仅改下方两个常量即可；命令会记录原始响应（截断）便于核对。
+#[tauri::command]
+pub async fn disk_delete(
+    state: State<'_, std::sync::Arc<AppState>>,
+    article_ids: Vec<String>,
+    subject_ids: Vec<String>,
+) -> Result<DiskDeleteResult, String> {
+    let (base, root) = base_root(&state);
+    let session = session_of(&state)?;
+    let client = state.client.clone();
+    let article_del = format!("{base}/{root}/knowledge/article/delete.htm");
+    let subject_del = format!("{base}/{root}/knowledge/space/deleteSubject.htm");
+
+    let mut res = DiskDeleteResult {
+        deleted_files: 0,
+        deleted_dirs: 0,
+        failed: Vec::new(),
+    };
+
+    // 1) 先删文件（文章）：逐 id POST，检查响应 code==200
+    for id in &article_ids {
+        let url = format!("{article_del}");
+        match client
+            .post(&url)
+            .header("Cookie", &session)
+            .form(&[("id", id.as_str())])
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    res.failed.push(format!("文件 {id}: HTTP {}", resp.status().as_u16()));
+                    continue;
+                }
+                let text = resp.text().await.unwrap_or_default();
+                match decode_flex(&text) {
+                    Ok(v) => {
+                        let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(200);
+                        if code == 200 {
+                            res.deleted_files += 1;
+                        } else {
+                            let msg = v
+                                .get("msg")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("未知错误")
+                                .to_string();
+                            res.failed.push(format!("文件 {id}: {msg}"));
+                        }
+                    }
+                    Err(_) => {
+                        let t = text.chars().take(120).collect::<String>();
+                        res.failed.push(format!("文件 {id}: 响应解析失败（可能端点不对）: {t}"));
+                    }
+                }
+            }
+            Err(e) => res.failed.push(format!("文件 {id}: {e}")),
+        }
+    }
+
+    // 2) 再删目录（subject）
+    for id in &subject_ids {
+        let url = format!("{subject_del}");
+        match client
+            .post(&url)
+            .header("Cookie", &session)
+            .form(&[("id", id.as_str())])
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    res.failed.push(format!("目录 {id}: HTTP {}", resp.status().as_u16()));
+                    continue;
+                }
+                let text = resp.text().await.unwrap_or_default();
+                match decode_flex(&text) {
+                    Ok(v) => {
+                        let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(200);
+                        if code == 200 {
+                            res.deleted_dirs += 1;
+                        } else {
+                            let msg = v
+                                .get("msg")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("未知错误")
+                                .to_string();
+                            res.failed.push(format!("目录 {id}: {msg}"));
+                        }
+                    }
+                    Err(_) => {
+                        let t = text.chars().take(120).collect::<String>();
+                        res.failed.push(format!("目录 {id}: 响应解析失败（可能端点不对）: {t}"));
+                    }
+                }
+            }
+            Err(e) => res.failed.push(format!("目录 {id}: {e}")),
+        }
+    }
+
+    Ok(res)
+}
+
 // ---------- 资源管理器右键菜单（HKCU 静态 verb，MVP 路线 A） ----------
 
 /// 查询右键菜单注册状态

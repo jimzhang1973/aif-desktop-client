@@ -1752,18 +1752,23 @@ async function seedUnreadFromHistory() {
   }
 }
 
+/// 由 matters 数据计算待办角标并上屏（所有成功拉到 matters 的路径都调用，
+/// 保证角标与待办页数字同源同帧，页面更新了角标必然跟着更新）
+function applyTodoBadge(matters: MatterRow[]) {
+  todoBadgeCount = matters
+    .filter((m) => m.category === "received")
+    .reduce((s, m) => s + m.badges.filter((b) => b.label === "待办").reduce((x, b) => x + b.count, 0), 0);
+  setTabBadge("todos", todoBadgeCount);
+}
+
 /// 后台统计角标：待办 = 「我收到的」各行的「待办」数字合计；消息 = 未读集合大小。
 /// 不依赖当前所在 Tab（get_matters 独立于待办页渲染）。
 async function refreshBadgeCounts() {
   try {
-    const matters = await api.getMatters();
-    todoBadgeCount = matters
-      .filter((m) => m.category === "received")
-      .reduce((s, m) => s + m.badges.filter((b) => b.label === "待办").reduce((x, b) => x + b.count, 0), 0);
+    applyTodoBadge(await api.getMatters());
   } catch {
     /* 未登录/网络失败：保持现值 */
   }
-  setTabBadge("todos", todoBadgeCount);
   setTabBadge("messages", unreadIds.size);
 }
 
@@ -2223,6 +2228,7 @@ async function refreshTodos(silent = false) {
     } catch {
       return; // 静默失败：保持现状
     }
+    applyTodoBadge(mattersCache); // 同一份数据同步刷导航角标（省一次 getMatters）
     const st = content.scrollTop;
     renderTodoSummary();
     renderMatterList();
@@ -2258,6 +2264,7 @@ async function fetchMatterList() {
   list.innerHTML = skels();
   try {
     mattersCache = await api.getMatters();
+    applyTodoBadge(mattersCache); // 进入待办页拿到新数据即同步角标（此前角标只靠轮询路径，页面数据从不回写角标）
   } catch {
     mattersCache = [];
     const ms = document.getElementById("mt-summary");
@@ -3721,8 +3728,10 @@ async function main() {
     toast(e);
   });
   on("todos-updated", () => {
-    void refreshTodos(true);
-    void refreshBadgeCounts();
+    // 待办页开着：refreshTodos(true) 内部拉 matters 后经 applyTodoBadge 同步角标（省一次重复请求）；
+    // 其它页面：单独刷角标
+    if (currentTab === "todos") void refreshTodos(true);
+    else void refreshBadgeCounts();
   });
   on("messages-updated", () => void refreshMessages(true));
   on<MessageRow>("new-message", (m) => {

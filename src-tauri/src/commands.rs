@@ -1215,6 +1215,9 @@ pub struct SpaceRow {
     pub color: String,
     pub collected: bool,
     pub url: String,
+    /// 空间分类名（原始 spaceType 为分类 id，经 findAllSystemSpaceCategory 字典映射；
+    /// 取不到为空串，前端按「未分类」处理）
+    pub category: String,
 }
 
 /// 从任意 JSON 值里按候选键取字符串
@@ -1366,12 +1369,38 @@ pub async fn get_docs(
         .collect())
 }
 
+/// 空间分类字典（findAllSystemSpaceCategory）：id → 分类名。失败不阻塞空间列表。
+async fn space_category_map(state: &Arc<AppState>, session: &str, base: &str, root: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let url = format!("{base}/{root}/knowledge/space/category/findAllSystemSpaceCategory.htm");
+    if let Ok(resp) = client_ref(state).post(&url).header("Cookie", session).send().await {
+        if let Ok(v) = resp.json::<serde_json::Value>().await {
+            let arr = v
+                .get("data")
+                .and_then(|d| d.as_array())
+                .cloned()
+                .unwrap_or_default();
+            for c in arr {
+                if let (Some(id), Some(name)) = (
+                    c.get("id").and_then(|x| x.as_str()),
+                    c.get("name").and_then(|x| x.as_str()),
+                ) {
+                    map.insert(id.to_string(), name.to_string());
+                }
+            }
+        }
+    }
+    map
+}
+
 /// 空间列表（空间 Tab 两个分类）。
 /// 实证协议（DCP，2026-10-11）：
 /// - 我的收藏：GET {root}/knowledge/collect/findCollectListOfSpace.htm?pageSize=1000
 ///   → [{id(收藏记录), spaceId, spaceName, createTime, spaceColor, belongDept{deptName}}]（B/S 端 reverse 后最近收藏在前）
 /// - 全部空间：POST {root}/nonlogin/knowledge/home/findAllSpace.htm（空 body）
-///   → [{id, name, remark, collect(0/1), spaceColor, belongDept{deptName}}]
+///   → [{id, name, remark, collect(0/1), spaceColor, belongDept{deptName}, spaceType(分类id)}]
+/// - 分类字典：POST {root}/knowledge/space/category/findAllSystemSpaceCategory.htm（空 body）
+///   → {data:[{id(即 spaceType), name, icon, type, innerSort}]}（2026-10-15 实测 31 个分类）
 /// 空间打开地址：{root}/nonlogin/knowledge/space/home.htm?id={spaceId}
 #[tauri::command]
 pub async fn get_spaces(state: State<'_, Arc<AppState>>, category: String) -> Result<Vec<SpaceRow>, String> {
@@ -1389,6 +1418,8 @@ pub async fn get_spaces(state: State<'_, Arc<AppState>>, category: String) -> Re
         "all" => (format!("{}/{}/nonlogin/knowledge/home/findAllSpace.htm", base, root), true),
         _ => return Err(format!("未知空间分类: {category}")),
     };
+
+    let cat_map = space_category_map(&state, &session, &base, &root).await;
 
     let mut req = client_ref(&state).post(&url).header("Cookie", &session);
     if use_form {
@@ -1419,6 +1450,7 @@ pub async fn get_spaces(state: State<'_, Arc<AppState>>, category: String) -> Re
                 Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) == 1,
                 _ => category == "collect",
             };
+            let space_type = jstr(o, &["spaceType"]);
             SpaceRow {
                 url: if !id.is_empty() {
                     format!("{}/{}/nonlogin/knowledge/space/home.htm?id={}", base, root, id)
@@ -1431,6 +1463,7 @@ pub async fn get_spaces(state: State<'_, Arc<AppState>>, category: String) -> Re
                 dept,
                 color: jstr(o, &["spaceColor"]),
                 collected,
+                category: cat_map.get(&space_type).cloned().unwrap_or_default(),
             }
         })
         .filter(|s| !s.id.is_empty() && !s.name.is_empty())

@@ -1003,7 +1003,7 @@ async function renderAssistant(content: HTMLElement, force = false) {
 /** 网盘页状态（跨渲染保留，右键菜单流程依赖它） */
 const diskSt = {
   spaceId: "",
-  spaces: [] as { id: string; name: string }[],
+  spaces: [] as { id: string; name: string; cat: string }[],
   roots: [] as DiskNode[],
   loaded: new Set<string>(), // 已拉过子节点的 subjectId
   children: new Map<string, DiskNode[]>(), // subjectId → 直接子节点
@@ -1299,10 +1299,10 @@ async function renderDisk(content: HTMLElement) {
     </div>`;
   // 空间下拉：个人空间 + 有权限的空间
   const sel = document.getElementById("disk-space") as HTMLSelectElement;
-  const spaces: { id: string; name: string }[] = [];
+  const spaces: { id: string; name: string; cat: string }[] = [];
   try {
     const pid = await api.diskPersonalSpaceId();
-    spaces.push({ id: pid, name: "个人空间" });
+    spaces.push({ id: pid, name: "个人空间", cat: "" });
   } catch (e) {
     document.getElementById("disk-tree")!.innerHTML =
       `<div class="empty">${esc(String(e).replace(/^"|"$/g, ""))}</div>`;
@@ -1310,12 +1310,36 @@ async function renderDisk(content: HTMLElement) {
   }
   try {
     const rows = await api.getSpaces("all");
-    for (const r of rows) if (r.id && r.id !== spaces[0].id) spaces.push({ id: r.id, name: r.name || "未命名空间" });
+    for (const r of rows) if (r.id && r.id !== spaces[0].id) spaces.push({ id: r.id, name: r.name || "未命名空间", cat: r.category || "" });
   } catch {
     /* 空间列表拉取失败不阻塞：个人空间仍可用 */
   }
   diskSt.spaces = spaces;
-  sel.innerHTML = spaces.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+  // 按分类 optgroup 分组（个人空间置顶不分组）
+  {
+    const groups: { name: string; opts: { id: string; name: string }[] }[] = [];
+    for (const s of spaces) {
+      if (!s.cat) continue;
+      let g = groups.find((x) => x.name === s.cat);
+      if (!g) {
+        g = { name: s.cat, opts: [] };
+        groups.push(g);
+      }
+      g.opts.push({ id: s.id, name: s.name });
+    }
+    const plain = spaces
+      .filter((s) => !s.cat)
+      .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`)
+      .join("");
+    sel.innerHTML =
+      plain +
+      groups
+        .map(
+          (g) =>
+            `<optgroup label="${esc(g.name)}">${g.opts.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join("")}</optgroup>`,
+        )
+        .join("");
+  }
   // 恢复上次目标所在空间，否则个人空间
   const last = diskLastTarget();
   sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
@@ -3097,11 +3121,14 @@ function mySpaceRow(): SpaceRow {
     color: "#0ea5e9",
     collected: true,
     url: `${base}/${root}/knowledge/personal/view.htm`,
+    category: "",
   };
 }
 const MY_SPACE_ICON = `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#0ea5e9"/><path d="M5 11.4 12 5l7 6.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 10.2V18h10.8v-7.8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 18v-4.6h4V18" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-/// 渲染空间列表（spacesCache + spaceSearch 本地过滤；搜索输入只走这里，不重新请求、焦点不丢）
+/// 渲染空间列表（spacesCache + spaceSearch 本地过滤；搜索输入只走这里，不重新请求、焦点不丢）。
+/// 「全部空间」无关键字时按分类分节（B/S spaceType 经 findAllSystemSpaceCategory 字典映射）；
+/// 有关键字时平铺（可按分类名搜索）。
 function renderSpaceList() {
   const list = document.getElementById("list");
   if (!list || currentTab !== "spaces") return;
@@ -3110,7 +3137,8 @@ function renderSpaceList() {
     !kw ||
     s.name.toLowerCase().includes(kw) ||
     (s.dept || "").toLowerCase().includes(kw) ||
-    (s.remark || "").toLowerCase().includes(kw);
+    (s.remark || "").toLowerCase().includes(kw) ||
+    (s.category || "").toLowerCase().includes(kw);
   // 「我的收藏」分类：人工置顶「我的空间」固定项（始终排最前；同样受搜索过滤）
   const withMy = spaceSection === "starred" ? [mySpaceRow(), ...spacesCache] : spacesCache;
   const spaces = withMy.filter(hit);
@@ -3118,23 +3146,44 @@ function renderSpaceList() {
     list.innerHTML = `<div class="empty">${kw ? "没有匹配的空间" : spaceSection === "starred" ? "暂无收藏的空间" : "暂无可访问的空间"}</div>`;
     return;
   }
-  list.innerHTML = spaces
-    .map((s) => {
-      const c = spaceColorOf(s.color);
-      const ico =
-        s.id === "__my_space__"
-          ? MY_SPACE_ICON
-          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5z"/></svg>`;
-      return `
+  const card = (s: SpaceRow) => {
+    const c = spaceColorOf(s.color);
+    const ico =
+      s.id === "__my_space__"
+        ? MY_SPACE_ICON
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5z"/></svg>`;
+    return `
       <div class="list-item card" data-url="${esc(s.url)}" title="${esc(s.remark || s.name)}">
         <div class="ico" style="color:${c};background:${c}1f">${ico}</div>
         <div class="li-main">
           <div class="li-title">${esc(s.name)}${s.collected ? '<span class="star-mark" style="color:#f59e0b">★</span>' : ""}</div>
-          <div class="li-sub">${esc([s.dept, s.remark].filter((x) => x && x !== "暂无说明").join(" · ") || " ")}</div>
+          <div class="li-sub">${esc([s.dept, s.remark].filter((x) => x && x !== "暂无说明").join(" · ")) || " "}${s.category ? `<span class="cat-badge">${esc(s.category)}</span>` : ""}</div>
         </div>
       </div>`;
-    })
-    .join("");
+  };
+  // 全部空间 + 无关键字 → 按分类分节（保持接口出现顺序，未分类排最后）
+  if (spaceSection === "all" && !kw) {
+    const groups: { name: string; rows: SpaceRow[] }[] = [];
+    for (const s of spaces) {
+      const g = s.category || "未分类";
+      let bucket = groups.find((x) => x.name === g);
+      if (!bucket) {
+        bucket = { name: g, rows: [] };
+        groups.push(bucket);
+      }
+      bucket.rows.push(s);
+    }
+    groups.sort((a, b) => (a.name === "未分类" ? 1 : b.name === "未分类" ? -1 : 0));
+    list.innerHTML = groups
+      .map(
+        (g) =>
+          `<div class="space-group">${esc(g.name)}<span class="sg-count">${g.rows.length}</span></div>` +
+          g.rows.map(card).join(""),
+      )
+      .join("");
+  } else {
+    list.innerHTML = spaces.map(card).join("");
+  }
   list.querySelectorAll(".list-item").forEach((item) =>
     item.addEventListener("click", () => {
       const url = (item as HTMLElement).dataset.url;

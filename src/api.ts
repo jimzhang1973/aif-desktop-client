@@ -176,6 +176,8 @@ export interface SpaceRow {
   color: string;
   collected: boolean;
   url: string;
+  /** 空间分类名（spaceType 经字典映射；空串=未分类） */
+  category: string;
 }
 
 export const _apiRaw = {

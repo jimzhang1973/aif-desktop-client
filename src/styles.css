@@ -1137,3 +1137,9 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-btn.danger { color: #fff; background: #dc2626; border-color: #dc2626; }
 .disk-btn.danger:hover { background: #b91c1c; }
 .dark .disk-btn.danger { color: #fff; }
+
+/* 空间分类：分组小节标题 + 行内分类徽标 */
+.space-group { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; font-size: 12px; font-weight: 700; color: var(--text-2, #666); }
+.space-group .sg-count { font-weight: 500; font-size: 11px; color: var(--text-3, #999); background: var(--hover, rgba(0,0,0,.06)); border-radius: 8px; padding: 0 7px; line-height: 16px; }
+.cat-badge { display: inline-block; margin-left: 6px; font-size: 10px; line-height: 15px; padding: 0 6px; border-radius: 7px; color: #2563eb; background: rgba(59, 130, 246, .12); white-space: nowrap; }
+.dark .cat-badge { color: #93c5fd; background: rgba(59, 130, 246, .2); }

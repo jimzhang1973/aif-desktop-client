@@ -651,6 +651,12 @@
           "markdownDescription": "Enables the trace_invoke command without any pre-configured scope."
         },
         {
+          "description": "Enables the tray_flash_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tray-flash-stop",
+          "markdownDescription": "Enables the tray_flash_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the try_auto_login command without any pre-configured scope.",
           "type": "string",
           "const": "allow-try-auto-login",
@@ -1129,6 +1135,12 @@
           "type": "string",
           "const": "deny-trace-invoke",
           "markdownDescription": "Denies the trace_invoke command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tray_flash_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tray-flash-stop",
+          "markdownDescription": "Denies the tray_flash_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the try_auto_login command without any pre-configured scope.",

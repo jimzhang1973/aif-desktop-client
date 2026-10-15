@@ -3023,6 +3023,15 @@ pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: Strin
     let _ = app.emit("snooze-fired", format!("{title}：{body}"));
 }
 
+/// 前端「点击任意消息」时调用：停止托盘新消息闪烁并恢复常态图标。
+/// 约定（2026-10-15）：新消息闪烁持续到用户打开应用界面并点击任意消息为止，
+/// 打开面板/点击托盘不再视为已阅。
+#[tauri::command]
+pub fn tray_flash_stop(app: AppHandle) {
+    log::info!("[tray] 用户点击消息，停止托盘闪烁");
+    crate::tray::stop_flash(&app);
+}
+
 /// 迷你速览条：屏幕右缘常置小窗（无边框 / 置顶 / 不进任务栏 / 不抢焦点）。
 /// enable=true 创建（已存在则忽略）；false 关闭。数据与交互见 mini.html / src/mini.ts：
 /// 未读数读共享 localStorage，待办数 invoke get_todos，点击 emit mini-navigate 交主窗处理。

@@ -3580,6 +3580,8 @@ function markOneRead(id: string): boolean {
   unreadIds.delete(id);
   persistUnread();
   setTabBadge("messages", unreadIds.size);
+  // 点击消息 = 已阅：停止托盘新消息闪烁（2026-10-15 约定；幂等，重复调用无害）
+  void invoke("tray_flash_stop").catch(() => {});
   // 行内样式同步：列表可能处于任一渲染态（当前页 / 本地回退），全量清理兜底
   document.querySelectorAll(`.msg-row[data-id="${CSS.escape(id)}"]`).forEach((row) => {
     row.classList.remove("unread");
@@ -4024,6 +4026,8 @@ function bindMessageItems(root: HTMLElement) {
       // 点击未读消息 → 该条立即转已读（集合/角标/行内样式统一在 markOneRead 内同步）
       const id = (item as HTMLElement).dataset.id;
       markOneRead(id || "");
+      // 点击任意消息（含已读）都停止托盘闪烁（2026-10-15 约定）
+      void invoke("tray_flash_stop").catch(() => {});
       const url = (item as HTMLElement).dataset.url;
       if (url) void openUrl(url);
     }),

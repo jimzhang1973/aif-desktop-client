@@ -178,6 +178,7 @@ pub fn run() {
             commands::debug_webview_rect,
             commands::debug_dump,
             commands::fire_snooze,
+            commands::tray_flash_stop,
             commands::set_mini_card_visible,
             commands::toggle_mini_bar,
             commands::trace_invoke,

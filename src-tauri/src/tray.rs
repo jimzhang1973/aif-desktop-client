@@ -242,16 +242,15 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
 }
 
 /// 面板显示：已可见则仅聚焦，不自动收起（窗口常驻桌面，最小化按钮才缩回托盘）。
-/// 弹出即视为「新消息已阅」：停止托盘闪烁，并通知前端。
+/// 注意：打开面板**不再**停止托盘闪烁 —— 按用户约定（2026-10-15），
+/// 新消息闪烁持续到「打开应用界面后点击任意消息」（前端经 tray_flash_stop 停止）。
 fn toggle_panel(app: &AppHandle) {
-    stop_flash(app);
     raise_main(app);
     let _ = app.emit("panel-shown", ());
 }
 
 /// 显示面板（定位屏幕右下角后弹出）。全局快捷键也走这里。
 pub fn show_panel(app: &AppHandle) {
-    stop_flash(app);
     raise_main(app);
     let _ = app.emit("panel-shown", ());
 }
@@ -314,9 +313,33 @@ pub(crate) fn raise_main(app: &AppHandle) {
     );
 }
 
-/// 新消息到达：托盘图标闪烁（常态图 ↔ 感叹号告警图，500ms 交替，共 7 秒）。
-/// 用户打开面板或点击托盘时提前停止。
+/// 新消息到达：托盘图标闪烁（常态图 ↔ 感叹号告警图，500ms 交替）。
+/// **持续闪烁**直到用户在应用内点击任意消息（前端调用 tray_flash_stop）；
+/// 位置稳定性：只用 set_icon（底层 NIM_MODIFY）替换图标像素，
+/// (hWnd, uID) 身份不变，Explorer 不重排托盘布局（对比删除再添加的错误实现）。
 pub fn flash(app: &AppHandle) {
+    if FLASHING.swap(true, Ordering::SeqCst) {
+        return; // 已在闪烁
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            let mut i = 0u32;
+            while FLASHING.load(Ordering::SeqCst) {
+                let icon = if i % 2 == 0 { alert_icon() } else { normal_icon() };
+                let _ = tray.set_icon(Some(icon));
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                i += 1;
+            }
+            let _ = tray.set_icon(Some(normal_icon()));
+        }
+        FLASHING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// 短时闪烁（7 秒自停）：每日摘要 / 待办超时升级等「提示性」场景，
+/// 没有对应的「点击消息」停止动作，不能无限闪。
+pub fn flash_brief(app: &AppHandle) {
     if FLASHING.swap(true, Ordering::SeqCst) {
         return; // 已在闪烁
     }

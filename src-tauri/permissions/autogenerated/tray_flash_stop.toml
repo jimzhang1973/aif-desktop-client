@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tray-flash-stop"
+description = "Enables the tray_flash_stop command without any pre-configured scope."
+commands.allow = ["tray_flash_stop"]
+
+[[permission]]
+identifier = "deny-tray-flash-stop"
+description = "Denies the tray_flash_stop command without any pre-configured scope."
+commands.deny = ["tray_flash_stop"]

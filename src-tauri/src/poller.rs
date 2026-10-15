@@ -119,6 +119,7 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
     if let Ok(new) = msg_res {
         // 通知规则快照：勿扰时段 / 静音关键词（Settings 为纯数据，clone 开销可忽略）
         let settings_snap = state.settings.lock().unwrap().clone();
+        let fetched = new.len();
         let mut new_list: Vec<NewMessage> = Vec::new();
         {
             let conn = state.db.lock().unwrap();
@@ -127,6 +128,9 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
             let baseline = db::kv_get(&conn, "notify_source_v2").is_none();
             for m in new {
                 if let Ok(true) = db::insert_message(&conn, &m.id, &m.title, &m.body, &m.url) {
+                    // 入库即留痕：这次新增链路（轮询→入库→事件/通知）此前完全无日志，
+                    // 「消息收到了但没弹窗/角标没动」类问题无从排查
+                    log::info!("[poll] 新消息入库：{} | {}", m.title, m.body.chars().take(40).collect::<String>());
                     if !baseline {
                         let muted = settings_snap.in_dnd_window(local_hm())
                             || settings_snap.hit_mute_keyword(&m.title, &m.body);
@@ -145,13 +149,21 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
                 let _ = db::kv_set(&conn, "notify_source_v2", "1");
             }
         }
+        log::info!(
+            "[poll] 本轮消息：拉取 {fetched} 条，新增 {}（静音 {}）",
+            new_list.len(),
+            new_list.iter().filter(|m| m.muted).count()
+        );
         // 系统通知（含同批聚合、静音过滤）；前端事件逐条发（角标逐条累加）
         notify_grouped(app, &new_list);
         for m in &new_list {
             let _ = app.emit("new-message", m.clone());
         }
         if !new_list.is_empty() {
-            // 新消息不再闪托盘：弹窗 + 提示音即可（勿扰 = 不打扰）；前端据此刷新消息页
+            if new_list.iter().any(|m| !m.muted) {
+                // 新消息托盘闪烁：持续闪到用户在应用内点击任意消息（tray_flash_stop）
+                crate::tray::flash(app);
+            }
             let _ = app.emit("messages-updated", ());
         }
     }
@@ -181,7 +193,7 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
                 );
             }
             if !overdue.is_empty() {
-                crate::tray::flash(app);
+                crate::tray::flash_brief(app);
             }
         }
         // 托盘「待办速览」菜单：待办集合变化时才重建（签名比对去重）
@@ -581,7 +593,7 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
         "daily-digest",
         format!("每日摘要：待办 {todo_cnt} 件未办结，今日新消息 {msg_cnt} 条"),
     );
-    crate::tray::flash(app);
+    crate::tray::flash_brief(app);
 }
 
 /// 桌面通知发送（登记 notify_urls 供点击反查）。
@@ -631,10 +643,13 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
                 Ok(())
             })
             .show();
-        if let Err(e) = result {
-            // AUMID 未解析/通知服务异常等：留痕后走插件路径兜底
-            log::warn!("[notify] WinRT toast 直发失败（AUMID={aumid}）：{title} | {e}");
-            fallback_notify(app, title, body);
+        match result {
+            Ok(()) => log::info!("[notify] WinRT toast 已发送：{title}"),
+            Err(e) => {
+                // AUMID 未解析/通知服务异常等：留痕后走插件路径兜底
+                log::warn!("[notify] WinRT toast 直发失败（AUMID={aumid}）：{title} | {e}");
+                fallback_notify(app, title, body);
+            }
         }
     }
     #[cfg(not(windows))]

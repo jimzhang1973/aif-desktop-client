@@ -66,6 +66,7 @@
       "allow-switch-role",
       "allow-toggle-mini-bar",
       "allow-trace-invoke",
+      "allow-tray-flash-stop",
       "allow-try-auto-login",
       "allow-start",
       "allow-sync-tabs-on-resize",

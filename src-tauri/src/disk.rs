@@ -1,7 +1,8 @@
 //! 网盘（个人空间 + 有权限空间）轻量传输：目录浏览、批量上传/下载、
 //! 资源管理器右键「上传到个人空间」注册（HKCU 静态 verb，MVP 路线 A）。
 //!
-//! B/S 接口（2026-10-14 双产品实测，详见 docs/网盘个人空间同步-技术业务分析.md）：
+//! B/S 接口（knowledge 知识库子系统，2026-10-14 起于 DCP 实测；DCP/AIF 同源同一框架，
+//! 接口完全一致，仅 {root} 前缀不同——见下方各接口的 {root} 占位，无需产品分支）：
 //! - 个人空间 spaceId：GET knowledge/personal/view.htm 页面注入 `var spaceId = 'PERSONAL_SPACE_<租户ID>'`
 //! - 目录树：POST nonlogin/knowledge/space/findTree.htm（spaceId）
 //! - 子树扁平列表：POST nonlogin/knowledge/space/findTreeByNodeId.htm（id/type/spaceId）
@@ -20,7 +21,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::auth;
 use crate::state::AppState;
@@ -971,12 +972,23 @@ pub struct DiskDeleteResult {
     pub items: Vec<DiskDeleteItem>,
 }
 
+/// 新建目录结果：成功时 id 为 B/S 返回的目录 id，ok=true；
+/// 业务级失败（code!=200 / 解析失败）写进 ok=false + msg，不抛 Err，便于前端统一处理。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskCreateDirResult {
+    pub id: String,
+    pub ok: bool,
+    pub msg: Option<String>,
+}
+
 /// 删除选中的文件（文章）与目录（subject）：先删文件，再删目录。
 /// 在线文档（非 FILE 文章）由前端在调用前排除，本命令只接收可删除的 id。
 ///
-/// B/S 删除端点（2026-10-14 推断，未实测——见 docs 标注「删除是高危语义/未实测」）：
-///   文章（附件 FILE）：{root}/knowledge/article/delete.htm
-///   目录（subject）：  {root}/knowledge/space/deleteSubject.htm
+/// B/S 删除端点（2026-10-15 实测确认）：
+///   文章（附件 FILE）：{root}/knowledge/article/delete.htm   （raw 表单 id=）
+///   目录（subject）：  {root}/knowledge/subject/delete.htm   （raw 表单 id=）
+/// 注：早期误用的 knowledge/space/deleteSubject.htm 在 DCP 下为 404，已废弃。
 /// 若实际端点不同，仅改下方两个常量即可；命令会记录原始响应（截断）便于核对。
 #[tauri::command]
 pub async fn disk_delete(
@@ -988,7 +1000,7 @@ pub async fn disk_delete(
     let session = session_of(&state)?;
     let client = state.client.clone();
     let article_del = format!("{base}/{root}/knowledge/article/delete.htm");
-    let subject_del = format!("{base}/{root}/knowledge/space/deleteSubject.htm");
+    let subject_del = format!("{base}/{root}/knowledge/subject/delete.htm");
 
     let mut res = DiskDeleteResult {
         deleted_files: 0,
@@ -1100,6 +1112,103 @@ pub async fn disk_delete(
     }
 
     Ok(res)
+}
+
+/// 在指定空间/目录下新建目录（subject）。
+///
+/// B/S 端点（2026-10-15 实测确认）：POST {root}/knowledge/subject/save.htm
+/// 请求体为 `data=` + URL 编码的 JSON（B/S 用 JSONUtil.readValueAsObject 解析 data，非表单）：
+///   {"id":"", "name":<目录名>, "parentId":<父目录id|"0">, "spaceId":<空间id>,
+///    "opDisabled":false, "remark":"", "anonymousAccess":false}
+/// 成功响应：{"code":200,"msg":"success","data":"<新建目录id>"}
+///
+/// 入参：
+///   space_id  目标空间 id（如个人空间 PERSONAL_SPACE_…）
+///   parent_id 父目录 id；根目录传 "0"
+///   name      新目录名
+///
+/// 注意：与删除不同，保存接口走 `data=` JSON 包裹，不能用 raw 表单字段（否则 500）。
+#[tauri::command]
+pub async fn disk_create_dir(
+    state: State<'_, std::sync::Arc<AppState>>,
+    space_id: String,
+    parent_id: String, // "0" = 根目录
+    name: String,
+) -> Result<DiskCreateDirResult, String> {
+    let (base, root) = base_root(&state);
+    let session = session_of(&state)?;
+    let client = state.client.clone();
+    let url = format!("{base}/{root}/knowledge/subject/save.htm");
+
+    let payload = serde_json::json!({
+        "id": "",
+        "name": name,
+        "parentId": parent_id,
+        "spaceId": space_id,
+        "opDisabled": false,
+        "remark": "",
+        "anonymousAccess": false,
+    });
+
+    match client
+        .post(&url)
+        .header("Cookie", &session)
+        .form(&[("data", payload.to_string())])
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                return Ok(DiskCreateDirResult {
+                    id: "".into(),
+                    ok: false,
+                    msg: Some(format!("HTTP {}", resp.status().as_u16())),
+                });
+            }
+            let text = resp.text().await.unwrap_or_default();
+            match decode_flex(&text) {
+                Ok(v) => {
+                    let code = v.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+                    if code == 200 {
+                        let id = v
+                            .get("data")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        Ok(DiskCreateDirResult {
+                            id,
+                            ok: true,
+                            msg: None,
+                        })
+                    } else {
+                        let msg = v
+                            .get("msg")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("未知错误")
+                            .to_string();
+                        Ok(DiskCreateDirResult {
+                            id: "".into(),
+                            ok: false,
+                            msg: Some(msg),
+                        })
+                    }
+                }
+                Err(_) => {
+                    let t = text.chars().take(120).collect::<String>();
+                    Ok(DiskCreateDirResult {
+                        id: "".into(),
+                        ok: false,
+                        msg: Some(format!("响应解析失败: {t}")),
+                    })
+                }
+            }
+        }
+        Err(e) => Ok(DiskCreateDirResult {
+            id: "".into(),
+            ok: false,
+            msg: Some(e.to_string()),
+        }),
+    }
 }
 
 // ---------- 资源管理器右键菜单（HKCU 静态 verb，MVP 路线 A） ----------
@@ -1214,4 +1323,172 @@ pub fn extract_upload_paths(argv: &[String]) -> Vec<String> {
         }
     }
     out
+}
+
+// ---------- 本地编辑（下载→拉起编辑器→锁释放/超时监视→回传） ----------
+
+/// 编辑完成事件（Rust 监视线程 → 前端）：changed=文件 mtime 相对下载时变化；
+/// timed_out=超过监视上限（2 小时）强制收线。前端据此做冲突检查并回传/放弃。
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskEditDone {
+    pub path: String,
+    pub changed: bool,
+    pub timed_out: bool,
+}
+
+/// 编辑监视上限（2 小时）：超时后停止监视并告知前端
+const EDIT_WATCH_MAX: std::time::Duration = std::time::Duration::from_secs(2 * 3600);
+/// 编辑器拉起宽限：Office/WPS 打开文档需要数秒，期间锁未建立会造成误判"已释放"
+const EDIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+/// 锁轮询间隔
+const EDIT_POLL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// 用系统关联程序打开文件（Windows: cmd start；macOS: open；Linux: xdg-open）
+fn shell_open(path: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", path])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// 编辑暂存目录：app_data/edit（下载的待编辑文件、MD 编辑副本都放这里）
+#[tauri::command]
+pub fn disk_edit_dir(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("edit");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// 读/写文本文件：content=None 读（返回 Some(text)）；Some(c) 写（返回 None）。
+/// 供内置 MD 编辑器取稿与回写。
+#[tauri::command]
+pub fn disk_file_text(path: String, content: Option<String>) -> Result<Option<String>, String> {
+    match content {
+        Some(c) => std::fs::write(&path, c.as_bytes())
+            .map(|_| None)
+            .map_err(|e| e.to_string()),
+        None => std::fs::read_to_string(&path)
+            .map(Some)
+            .map_err(|e| e.to_string()),
+    }
+}
+
+/// 同目录另存副本：「name.ext」→「name_副本_HHMMSS.ext」，返回新路径（冲突回传"另存副本"用）
+#[tauri::command]
+pub fn disk_file_copy(src: String) -> Result<String, String> {
+    let p = PathBuf::from(&src);
+    let dir = p.parent().ok_or("文件无父目录")?;
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    let ext = p
+        .extension()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let h = (secs / 3600) % 24;
+    let m = (secs / 60) % 60;
+    let s = secs % 60;
+    let name = if ext.is_empty() {
+        format!("{stem}_副本_{h:02}{m:02}{s:02}")
+    } else {
+        format!("{stem}_副本_{h:02}{m:02}{s:02}.{ext}")
+    };
+    let dest = dir.join(name);
+    std::fs::copy(&p, &dest).map_err(|e| e.to_string())?;
+    Ok(dest.to_string_lossy().into_owned())
+}
+
+/// 设置只读属性并拉起系统关联编辑器；readonly=false 时启动监视线程：
+/// 句柄占用探测 + Office「~$」锁文件监听，释放后比对 mtime，emit disk-edit-done。
+/// 上传回传由前端完成（需会话与冲突检查）。只读查看不监视、不回传。
+#[tauri::command]
+pub fn disk_edit_start(app: AppHandle, path: String, readonly: bool) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.is_file() {
+        return Err("文件不存在".into());
+    }
+    {
+        let perm = std::fs::metadata(&p).map_err(|e| e.to_string())?.permissions();
+        let mut perm = perm;
+        perm.set_readonly(readonly);
+        std::fs::set_permissions(&p, perm).map_err(|e| e.to_string())?;
+    }
+    shell_open(&path)?;
+    if readonly {
+        return Ok(()); // 只读查看：不监视
+    }
+    let app2 = app.clone();
+    let path2 = path.clone();
+    std::thread::spawn(move || {
+        let p = PathBuf::from(&path2);
+        let init_mtime = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
+        // Office 锁文件：同目录「~$文件名」（Word/Excel/PPT/WPS 均会生成，关闭即消失）
+        let fname = p
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let lockfile = p.with_file_name(format!("~${fname}"));
+        std::thread::sleep(EDIT_GRACE);
+        let deadline = std::time::Instant::now() + EDIT_WATCH_MAX;
+        let mut released = false;
+        while std::time::Instant::now() < deadline {
+            // 释放判定：无 ~$ 锁文件 且 文件可写方式打开（编辑器独占锁已消失）
+            let lock_gone = !lockfile.exists();
+            let can_write = std::fs::OpenOptions::new().write(true).open(&p).is_ok();
+            if lock_gone && can_write {
+                released = true;
+                break;
+            }
+            std::thread::sleep(EDIT_POLL);
+        }
+        let changed = match (
+            std::fs::metadata(&p).and_then(|m| m.modified()).ok(),
+            init_mtime,
+        ) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        };
+        let _ = app2.emit(
+            "disk-edit-done",
+            DiskEditDone {
+                path: path2,
+                changed,
+                timed_out: !released,
+            },
+        );
+    });
+    Ok(())
 }

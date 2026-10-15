@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-disk-file-text"
+description = "Enables the disk_file_text command without any pre-configured scope."
+commands.allow = ["disk_file_text"]
+
+[[permission]]
+identifier = "deny-disk-file-text"
+description = "Denies the disk_file_text command without any pre-configured scope."
+commands.deny = ["disk_file_text"]

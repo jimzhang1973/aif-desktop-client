@@ -1220,3 +1220,55 @@ input:focus, select:focus { border-color: var(--accent); }
 .space-group .sg-count { font-weight: 600; font-size: 11px; border-radius: 999px; padding: 0 8px; line-height: 16px; }
 .cat-badge { display: inline-block; margin-left: 6px; font-size: 10px; line-height: 15px; padding: 0 6px; border-radius: 7px; color: #2563eb; background: rgba(59, 130, 246, .12); white-space: nowrap; }
 .dark .cat-badge { color: #93c5fd; background: rgba(59, 130, 246, .2); }
+
+/* ---------- 网盘文件点击小菜单 ---------- */
+#disk-file-menu { position: fixed; z-index: 120; min-width: 200px; background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, .2); padding: 6px; }
+.dark #disk-file-menu { background: #232323; }
+.dfm-title { padding: 5px 9px 7px; font-size: 12px; font-weight: 600; color: var(--text-3, #888); border-bottom: 1px solid var(--border); margin-bottom: 4px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dfm-btn { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.dfm-btn:hover { background: var(--hover, rgba(0, 0, 0, .06)); }
+
+/* ---------- 编辑冲突三选弹窗（复用 dc-box） ---------- */
+#disk-conflict-ov { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); display: flex; align-items: center; justify-content: center; z-index: 130; }
+
+/* ---------- 内置 MD 编辑器 ---------- */
+#md-edit-ov { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; z-index: 125; }
+.md-edit { width: min(760px, 92vw); height: min(640px, 88vh); background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px rgba(0, 0, 0, .3); display: flex; flex-direction: column; overflow: hidden; }
+.dark .md-edit { background: #232323; }
+.me-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.me-title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#md-edit-ov textarea { flex: 1; resize: none; border: 0; outline: none; padding: 12px 14px; font-family: Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.6; background: transparent; color: inherit; }
+.me-view { flex: 1; overflow: auto; padding: 12px 16px; font-size: 13.5px; line-height: 1.65; user-select: text; }
+.me-view h1, .me-view h2, .me-view h3 { margin: 10px 0 6px; }
+.me-view blockquote { margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--border); color: var(--text-3, #777); }
+.me-view code { background: var(--hover, rgba(0, 0, 0, .06)); padding: 1px 5px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; }
+.me-view li { margin-left: 18px; }
+.me-foot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+.me-hint { font-size: 11px; color: var(--text-3, #999); margin-left: auto; }
+
+/* ---------- 日历视图 ---------- */
+.cal-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.cal-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.cal-title { font-size: 14px; font-weight: 700; }
+.cal-tabs { display: flex; gap: 4px; width: 150px; }
+.cal-tabs .sync-tab { flex: 1; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 10px 12px 4px; }
+.cal-dow { text-align: center; font-size: 11.5px; color: var(--text-3, #999); padding: 2px 0; }
+.cal-cell { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 52px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.cal-cell:hover { background: var(--hover, rgba(0, 0, 0, .05)); }
+.cal-cell.out { opacity: .38; }
+.cal-cell.today { border-color: #0ea5e9; }
+.cal-cell.sel { background: rgba(14, 165, 233, .12); border-color: rgba(14, 165, 233, .5); }
+.cal-day { font-size: 12.5px; font-weight: 600; }
+.cal-count { font-size: 10.5px; font-weight: 700; color: #fff; background: #f97316; border-radius: 999px; padding: 0 6px; line-height: 15px; }
+.cal-count.zero { background: var(--hover, rgba(0, 0, 0, .08)); color: var(--text-3, #999); }
+.cal-wk { min-height: 64px; }
+.cal-daycard { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.cal-daycard .cal-count { font-size: 12px; line-height: 18px; }
+.cal-detail { flex: 1; overflow: auto; min-height: 0; border-top: 1px solid var(--border); padding: 8px 12px 12px; }
+.cal-dt-head { font-size: 12.5px; font-weight: 700; padding: 4px 2px 8px; color: var(--text-2, #555); }
+.cal-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; text-align: left; font-size: 12.5px; }
+.cal-item:hover { background: var(--hover, rgba(0, 0, 0, .05)); }
+.cal-hm { flex: none; font-size: 11.5px; color: var(--text-3, #999); font-variant-numeric: tabular-nums; }
+.cal-title2 { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-sender { flex: none; font-size: 11.5px; color: var(--text-3, #999); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

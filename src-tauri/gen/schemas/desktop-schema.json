@@ -243,6 +243,12 @@
           "markdownDescription": "Enables the disk_context_menu_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the disk_create_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-create-dir",
+          "markdownDescription": "Enables the disk_create_dir command without any pre-configured scope."
+        },
+        {
           "description": "Enables the disk_delete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-disk-delete",
@@ -253,6 +259,30 @@
           "type": "string",
           "const": "allow-disk-download-files",
           "markdownDescription": "Enables the disk_download_files command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the disk_edit_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-edit-dir",
+          "markdownDescription": "Enables the disk_edit_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the disk_edit_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-edit-start",
+          "markdownDescription": "Enables the disk_edit_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the disk_file_copy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-file-copy",
+          "markdownDescription": "Enables the disk_file_copy command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the disk_file_text command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-file-text",
+          "markdownDescription": "Enables the disk_file_text command without any pre-configured scope."
         },
         {
           "description": "Enables the disk_local_scan command without any pre-configured scope.",
@@ -681,6 +711,12 @@
           "markdownDescription": "Denies the disk_context_menu_status command without any pre-configured scope."
         },
         {
+          "description": "Denies the disk_create_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-create-dir",
+          "markdownDescription": "Denies the disk_create_dir command without any pre-configured scope."
+        },
+        {
           "description": "Denies the disk_delete command without any pre-configured scope.",
           "type": "string",
           "const": "deny-disk-delete",
@@ -691,6 +727,30 @@
           "type": "string",
           "const": "deny-disk-download-files",
           "markdownDescription": "Denies the disk_download_files command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_edit_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-edit-dir",
+          "markdownDescription": "Denies the disk_edit_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_edit_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-edit-start",
+          "markdownDescription": "Denies the disk_edit_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_file_copy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-file-copy",
+          "markdownDescription": "Denies the disk_file_copy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_file_text command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-file-text",
+          "markdownDescription": "Denies the disk_file_text command without any pre-configured scope."
         },
         {
           "description": "Denies the disk_local_scan command without any pre-configured scope.",

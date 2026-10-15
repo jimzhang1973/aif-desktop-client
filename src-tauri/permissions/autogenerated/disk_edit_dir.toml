@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-disk-edit-dir"
+description = "Enables the disk_edit_dir command without any pre-configured scope."
+commands.allow = ["disk_edit_dir"]
+
+[[permission]]
+identifier = "deny-disk-edit-dir"
+description = "Denies the disk_edit_dir command without any pre-configured scope."
+commands.deny = ["disk_edit_dir"]

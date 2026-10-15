@@ -9,7 +9,7 @@ const win = getCurrentWindow();
 let settings: Settings | null = null;
 let userInfo: UserInfo | null = null;
 let captchaRequired = false;
-let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "disk" | "quick" | "assistant" | "profile" = "messages";
+let currentTab: "messages" | "todos" | "ops" | "docs" | "spaces" | "disk" | "quick" | "assistant" | "calendar" | "profile" = "messages";
 let soundCache: Record<string, HTMLAudioElement> = {};
 // 应用版本号（5.0.1+build-id），启动时取一次
 let appVersion = "…";
@@ -792,7 +792,192 @@ const ICONS: Record<string, { active: string; idle: string }> = {
     active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#10b981"/><circle cx="12" cy="9.6" r="3" fill="#fff"/><path d="M5.8 18.6c.9-2.6 3.3-4.1 6.2-4.1s5.3 1.5 6.2 4.1" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>`,
     idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.3" r="3.3"/><path d="M5.3 19.2c.9-2.9 3.5-4.6 6.7-4.6s5.8 1.7 6.7 4.6"/></svg>`,
   },
+  calendar: {
+    // 日历视图：日历牌（橙）
+    active: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="#f97316"/><rect x="6" y="7" width="12" height="11" rx="2" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M6 10.5h12" stroke="#fff" stroke-width="1.8"/><g fill="#fff"><rect x="8.6" y="12.4" width="2" height="2" rx="0.5"/><rect x="11" y="12.4" width="2" height="2" rx="0.5"/><rect x="13.4" y="12.4" width="2" height="2" rx="0.5"/></g><path d="M9 5v2.6M15 5v2.6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    idle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>`,
+  },
 };
+
+// ---------- 「日历视图」：历史消息按 日/周/月 查看，点击明细用 webview 打开原文 ----------
+
+type CalView = "month" | "week" | "day";
+let calView: CalView = "month";
+let calAnchor = new Date(); // 月=锚点月；周/日=锚点日
+let calSel = ""; // 明细选中的日期 yyyy-mm-dd（空=跟随今天）
+
+function calKey(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function calParse(s: string): Date | null {
+  const d = new Date((s || "").replace(/-/g, "/"));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+async function renderCalendar(content: HTMLElement) {
+  content.innerHTML = `
+    <div class="cal-wrap">
+      <div class="cal-head">
+        <button class="disk-btn ghost" id="cal-prev" title="上一${calView === "month" ? "月" : calView === "week" ? "周" : "日"}">‹</button>
+        <span class="cal-title" id="cal-title"></span>
+        <button class="disk-btn ghost" id="cal-next" title="下一${calView === "month" ? "月" : calView === "week" ? "周" : "日"}">›</button>
+        <span class="tb-spacer"></span>
+        <div class="cal-tabs">
+          <button class="sync-tab${calView === "month" ? " on" : ""}" data-v="month">月</button>
+          <button class="sync-tab${calView === "week" ? " on" : ""}" data-v="week">周</button>
+          <button class="sync-tab${calView === "day" ? " on" : ""}" data-v="day">日</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="cal-grid"><div class="empty">正在加载历史消息…</div></div>
+      <div class="cal-detail" id="cal-detail"></div>
+    </div>`;
+  // 一次拉两个来源最近各 200 条，按 time_str 归日（够用且避免翻页）
+  let msgs: HistoryMessage[] = [];
+  try {
+    const [sys, per] = await Promise.all([
+      api.getHistoryMessages("system", "", 0, 200),
+      api.getHistoryMessages("personal", "", 0, 200),
+    ]);
+    msgs = [...sys, ...per]
+      .filter((m) => calParse(m.time_str))
+      .sort((a, b) => calParse(b.time_str)!.getTime() - calParse(a.time_str)!.getTime());
+  } catch {
+    /* 拉取失败 → 空日历 + 提示 */
+  }
+  calMsgCache = msgs;
+  if (!calSel) calSel = calKey(new Date());
+  document.getElementById("cal-prev")!.addEventListener("click", () => {
+    calAnchor = calShift(calAnchor, -1);
+    drawCal();
+  });
+  document.getElementById("cal-next")!.addEventListener("click", () => {
+    calAnchor = calShift(calAnchor, 1);
+    drawCal();
+  });
+  document.querySelectorAll<HTMLButtonElement>(".cal-tabs .sync-tab").forEach((b) =>
+    b.addEventListener("click", () => {
+      calView = (b.dataset.v as CalView) || "month";
+      renderCalendar(content);
+    }),
+  );
+  drawCal();
+}
+
+let calMsgCache: HistoryMessage[] = [];
+
+function calShift(d: Date, dir: number): Date {
+  const n = new Date(d);
+  n.setHours(12, 0, 0, 0);
+  if (calView === "month") n.setMonth(n.getMonth() + dir);
+  else if (calView === "week") n.setDate(n.getDate() + dir * 7);
+  else n.setDate(n.getDate() + dir);
+  return n;
+}
+
+function drawCal(): void {
+  const grid = document.getElementById("cal-grid");
+  const title = document.getElementById("cal-title");
+  if (!grid || !title) return;
+  const counts = new Map<string, number>();
+  for (const m of calMsgCache) {
+    const d = calParse(m.time_str)!;
+    const k = calKey(d);
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const todayK = calKey(new Date());
+  let html = "";
+  if (calView === "month") {
+    const y = calAnchor.getFullYear();
+    const mo = calAnchor.getMonth();
+    const total = calMsgCache.filter((m) => {
+      const d = calParse(m.time_str)!;
+      return d.getFullYear() === y && d.getMonth() === mo;
+    }).length;
+    title.textContent = `${y} 年 ${mo + 1} 月 · ${total} 条`;
+    const first = new Date(y, mo, 1);
+    const start = new Date(first);
+    start.setDate(1 - ((first.getDay() + 6) % 7)); // 周一开头
+    html = ["一", "二", "三", "四", "五", "六", "日"].map((d) => `<div class="cal-dow">${d}</div>`).join("");
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const k = calKey(d);
+      const out = d.getMonth() !== mo ? " out" : "";
+      const c = counts.get(k);
+      html += `<button class="cal-cell${out}${k === calSel ? " sel" : ""}${k === todayK ? " today" : ""}" data-k="${k}">
+        <span class="cal-day">${d.getDate()}</span>${c ? `<span class="cal-count">${c}</span>` : ""}</button>`;
+    }
+  } else if (calView === "week") {
+    const base = new Date(calAnchor);
+    base.setHours(12, 0, 0, 0);
+    base.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+    const end = new Date(base);
+    end.setDate(base.getDate() + 6);
+    let total = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      total += counts.get(calKey(d)) || 0;
+    }
+    title.textContent = `${calKey(base)} ~ ${calKey(end)} · ${total} 条`;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      const k = calKey(d);
+      const c = counts.get(k) || 0;
+      html += `<button class="cal-cell cal-wk${k === calSel ? " sel" : ""}${k === todayK ? " today" : ""}" data-k="${k}">
+        <span class="cal-day">${d.getMonth() + 1}/${d.getDate()} 周${"日一二三四五六"[d.getDay()]}</span>
+        <span class="cal-count${c ? "" : " zero"}">${c} 条</span></button>`;
+    }
+  } else {
+    const k = calKey(calAnchor);
+    calSel = k;
+    title.textContent = `${k} · ${counts.get(k) || 0} 条`;
+    html = `<div class="cal-daycard${counts.get(k) ? " has" : ""}" data-k="${k}">
+      <span class="cal-day">${calAnchor.getDate()} 日</span>
+      <span class="cal-count${counts.get(k) ? "" : " zero"}">${counts.get(k) || 0} 条事件</span></div>`;
+  }
+  grid.innerHTML = html;
+  grid.querySelectorAll<HTMLElement>("[data-k]").forEach((el) =>
+    el.addEventListener("click", () => {
+      calSel = el.dataset.k || calSel;
+      drawCal();
+    }),
+  );
+  calDrawDetail();
+}
+
+function calDrawDetail(): void {
+  const box = document.getElementById("cal-detail");
+  if (!box) return;
+  const items = calMsgCache.filter((m) => calKey(calParse(m.time_str)!) === calSel);
+  const d = calParse(calSel);
+  const head = d
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} 明细（${items.length}）`
+    : "明细";
+  box.innerHTML =
+    `<div class="cal-dt-head">${head}</div>` +
+    (items.length
+      ? items
+          .map((m) => {
+            const ty = msgTypeOf(m.mc);
+            const hm = (calParse(m.time_str) || new Date()).toTimeString().slice(0, 5);
+            return `<button class="cal-item" data-url="${esc(m.url)}" title="点击打开原文">
+              <span class="cal-hm">${hm}</span>
+              <span class="msg-cat" style="color:${ty.color};background:${ty.color}14">${esc(ty.label)}</span>
+              <span class="cal-title2">${esc(m.title)}</span>
+              ${m.sender ? `<span class="cal-sender">${esc(m.sender)}</span>` : ""}
+            </button>`;
+          })
+          .join("")
+      : `<div class="empty">该日无历史消息</div>`);
+  box.querySelectorAll<HTMLButtonElement>(".cal-item").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (b.dataset.url) void openUrl(b.dataset.url);
+    }),
+  );
+}
 
 function renderPanel() {
   app.innerHTML = `
@@ -820,6 +1005,7 @@ function renderPanel() {
           <button class="nav-btn" data-tab="disk" title="网盘"><span class="nav-ico idle">${ICONS.disk.idle}</span><span class="nav-ico active">${ICONS.disk.active}</span><span class="nav-label">网盘</span></button>
           <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span><span class="nav-label">快捷</span></button>
           <button class="nav-btn" data-tab="assistant" title="助手"><span class="nav-ico idle">${ICONS.assistant.idle}</span><span class="nav-ico active">${ICONS.assistant.active}</span><span class="nav-label">助手</span></button>
+          <button class="nav-btn" data-tab="calendar" title="日历视图（历史消息按日期查看）"><span class="nav-ico idle">${ICONS.calendar.idle}</span><span class="nav-ico active">${ICONS.calendar.active}</span><span class="nav-label">日历</span></button>
           <button class="nav-btn collapse-btn" id="btn-collapse" title="折叠列表页"><span class="nav-ico idle">${listCollapsed ? UNFOLD_LIST_SVG : FOLD_LIST_SVG}</span></button>
           <button class="nav-btn nav-help" id="btn-help" title="帮助（使用手册）"><span class="nav-ico idle">${HELP_SVG}</span><span class="nav-label">帮助</span></button>
           <button class="nav-btn nav-bottom" data-tab="profile" title="我的"><span class="nav-ico idle">${ICONS.profile.idle}</span><span class="nav-ico active">${ICONS.profile.active}</span><span class="nav-label">我的</span></button>
@@ -934,6 +1120,7 @@ function switchTab(tab: typeof currentTab) {
   else if (tab === "quick") void renderQuick(content);
   else if (tab === "disk") void renderDisk(content);
   else if (tab === "assistant") void renderAssistant(content);
+  else if (tab === "calendar") void renderCalendar(content);
   else renderProfile(content);
 }
 
@@ -1618,6 +1805,7 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   const dlItems: DiskDlItem[] = [];
   const dlMarks: { rel: string; updateTime: number }[] = [];
   for (const { node, relDir } of files) {
+    if (diskEditing.has(node.id)) continue; // 编辑中：同步跳过，避免与本地编辑回传抢写时序
     const name = diskFileName(node);
     const rel = relDir ? `${relDir}/${name}` : name;
     const key = rel.toLowerCase();
@@ -1659,6 +1847,7 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
       skippedNoDir++;
       continue;
     }    const cloud = cloudMap.get(key);
+    if (cloud && diskEditing.has(cloud.id)) continue; // 该云端文件正被本地编辑：跳过
     if (cloud) {
       if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改
       if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新
@@ -1766,7 +1955,7 @@ function diskSyncRender(): void {
       : "网盘同步暂停";
   body.innerHTML = tabs + `
     <div class="sync-warn" title="在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL 等）不支持同步，仅同步普通附件文件（FILE）">
-      <span class="sw-ico">⚠</span>在线文档不支持同步：仅同步普通附件文件（FILE 型），请将在线文档内容在 B/S 内自行导出
+      <span class="sw-ico">⚠</span>仅同步网盘文件，在线文档不支持同步，在线文档可通过在线查看导出
     </div>
     <div class="sync-row">
       <label class="switch">
@@ -1969,8 +2158,8 @@ async function renderDisk(content: HTMLElement) {
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
         <button class="disk-btn" id="disk-sync-bind" title="将当前唯一勾选的云端目录与本地目录建立同步">＋同步</button>
         <span class="tb-spacer"></span>
-        <button class="disk-btn ghost" id="disk-sync" title="网盘同步">⇄ 网盘同步<span class="sync-dot" id="disk-sync-dot" hidden title="自动同步已开启"></span></button>
-        <button class="disk-btn ghost" id="disk-transfer" title="传输日志">⇅ 传输日志<span class="badge" id="disk-transfer-badge"></span></button>
+        <button class="disk-btn ghost" id="disk-sync" title="网盘同步规则">⇄ 规则<span class="sync-dot" id="disk-sync-dot" hidden title="自动同步已开启"></span></button>
+        <button class="disk-btn ghost" id="disk-transfer" title="传输日志">⇅ 日志<span class="badge" id="disk-transfer-badge"></span></button>
       </div>
       <div class="disk-spacerow">
         <select id="disk-space" class="disk-select" title="选择空间"></select>
@@ -2112,9 +2301,13 @@ async function renderDisk(content: HTMLElement) {
 async function diskSyncBindSelected(): Promise<void> {
   if (!syncCfg) diskSyncArm();
   if (!syncCfg) return;
-  if (diskSt.checked.size !== 1) return toast("请先在树上勾选且仅勾选一个目录");
-  const node = diskFirstCheckedDir();
-  if (!node) return toast("请勾选云端目录（而非文件）后再建立同步");
+  // 只允许当前层级勾选一个目录：级联勾进来的下级目录/文件不算（其父级已被勾选）
+  const checkedDirs = [...diskSt.checked]
+    .map((id) => diskSt.flat.get(id))
+    .filter((n): n is DiskNode => !!n && n.nodeType === "subject");
+  const topDirs = checkedDirs.filter((n) => !diskSt.checked.has(diskParentId(n)));
+  if (topDirs.length !== 1) return toast("请在当前层级只勾选一个目录");
+  const node = topDirs[0];
   let localDir = "";
   try {
     localDir = await diskPickDir();
@@ -2326,6 +2519,273 @@ function diskArticleUrl(n: DiskNode): string {
   return `${base}/${root}/knowledge/article/detail.htm?id=${encodeURIComponent(n.id)}`;
 }
 
+// ---------- 网盘文件点击菜单 / 内置 MD 编辑器 / 本地 Office 编辑回传 ----------
+
+/** 编辑中登记（articleId → 编辑上下文）：定时同步作业跳过这些云端文件，避免与回传抢写时序 */
+type DiskEditingEnt = {
+  articleId: string;
+  spaceId: string;
+  subjectId: string;
+  path: string;
+  name: string;
+  cloudUpdateTime: number;
+  startedAt: number;
+};
+const diskEditing = new Map<string, DiskEditingEnt>();
+
+const DISK_OFFICE_EXTS = ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "wps"];
+
+/** 点击文件行弹出的屏幕小菜单（fixed 定位，点击外部/Esc 关闭）：
+ *  在线文档 → 在线打开；FILE 附件 → 在线查看（+MD 编辑 / Office 只读与编辑回传） */
+function diskFileMenu(node: DiskNode, x: number, y: number): void {
+  diskFileMenuClose();
+  const disp = diskFileDisplay(node);
+  const isFile = node.nodeType === "article" && node.subtype === "FILE";
+  const isMd = isFile && (disp.ext === "md" || disp.ext === "markdown");
+  const isOffice = isFile && DISK_OFFICE_EXTS.includes(disp.ext);
+  const btns: { act: string; label: string; title: string }[] = [];
+  if (!isFile) {
+    btns.push({ act: "open", label: "在线文档，点击打开", title: "通过 webview 打开 B/S 在线查看页" });
+  } else {
+    btns.push({ act: "open", label: "在线查看", title: "通过 webview 打开 B/S 详情页" });
+    if (isMd) btns.push({ act: "md", label: "编辑MarkDown文件", title: "内置本地 MD 编辑器，改完上传网盘替换" });
+    if (isOffice) {
+      btns.push({ act: "ro", label: "本地只读查看", title: "下载到本地并设只读，用本机关联程序打开（不回传）" });
+      btns.push({ act: "edit", label: "本地编辑后上传", title: "下载后用本机关联程序编辑；关闭后自动比对 mtime 回传" });
+    }
+  }
+  const menu = document.createElement("div");
+  menu.id = "disk-file-menu";
+  menu.innerHTML =
+    `<div class="dfm-title" title="${esc(disp.name)}">${esc(disp.name)}</div>` +
+    btns
+      .map((b) => `<button class="dfm-btn" data-act="${b.act}" title="${b.title}">${esc(b.label)}</button>`)
+      .join("");
+  document.body.appendChild(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+  menu.querySelectorAll<HTMLButtonElement>(".dfm-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      diskFileMenuClose();
+      const act = b.dataset.act;
+      if (act === "open") void openUrl(diskArticleUrl(node));
+      else if (act === "md") void diskMdEdit(node);
+      else if (act === "ro") void diskOfficeOpen(node, true);
+      else if (act === "edit") void diskOfficeOpen(node, false);
+    }),
+  );
+  setTimeout(() => {
+    document.addEventListener("click", () => diskFileMenuClose(), { once: true });
+    document.addEventListener(
+      "keydown",
+      (ev) => {
+        if (ev.key === "Escape") diskFileMenuClose();
+      },
+      { once: true },
+    );
+  }, 0);
+}
+function diskFileMenuClose(): void {
+  document.getElementById("disk-file-menu")?.remove();
+}
+
+/** 下载 FILE 附件到编辑暂存目录（覆盖写），返回本地路径；失败抛错 */
+async function diskEditDownload(node: DiskNode, name: string): Promise<string> {
+  const editDir = await api.diskEditDir();
+  const ok = await runDiskJob(
+    "download",
+    () => api.diskDownloadFiles([{ articleId: node.id, name, relDir: "", subtype: "FILE" }], editDir, true),
+  );
+  if (!ok) throw new Error("下载未完成");
+  return `${editDir.replace(/[\\/]+$/, "")}/${name}`;
+}
+
+/** 本地只读查看 / 本地编辑后上传（Office 系）：Rust 设只读属性 + 拉起关联程序；
+ *  编辑模式由 Rust 监视句柄占用 + ~$ 锁文件，释放后 emit disk-edit-done 回前端回传 */
+async function diskOfficeOpen(node: DiskNode, readonly: boolean): Promise<void> {
+  const disp = diskFileDisplay(node);
+  try {
+    const path = await diskEditDownload(node, disp.name);
+    if (readonly) {
+      await api.diskEditStart(path, true);
+      toast("已下载并以只读方式打开（不回传）");
+      return;
+    }
+    diskEditing.set(node.id, {
+      articleId: node.id,
+      spaceId: diskSt.spaceId,
+      subjectId: diskParentId(node),
+      path,
+      name: disp.name,
+      cloudUpdateTime: node.updateTime,
+      startedAt: Date.now(),
+    });
+    await api.diskEditStart(path, false);
+    diskLog(`编辑中：「${disp.name}」——本机关闭后自动比对回传（监视 2 小时内有效）`, true);
+    toast("已下载并打开编辑；关闭编辑器后自动比对上传");
+  } catch (e) {
+    toast(`本地打开失败：${String(e).replace(/^"|"$/g, "")}`);
+  }
+}
+
+/** 内置本地 MD 编辑器入口：下载 → 读文本 → 模态编辑 */
+async function diskMdEdit(node: DiskNode): Promise<void> {
+  const disp = diskFileDisplay(node);
+  try {
+    const path = await diskEditDownload(node, disp.name);
+    const text = (await api.diskFileText(path)) ?? "";
+    diskEditing.set(node.id, {
+      articleId: node.id,
+      spaceId: diskSt.spaceId,
+      subjectId: diskParentId(node),
+      path,
+      name: disp.name,
+      cloudUpdateTime: node.updateTime,
+      startedAt: Date.now(),
+    });
+    diskMdEditorShow(node.id, disp.name, path, text);
+  } catch (e) {
+    toast(`打开失败：${String(e).replace(/^"|"$/g, "")}`);
+  }
+}
+
+/** 极简 MD 预览渲染（标题/引用/加粗斜体/行内码/列表/段落，无第三方依赖） */
+function mdToHtml(src: string): string {
+  return (
+    "<p>" +
+    esc(src)
+      .replace(/^### (.*)$/gm, "</p><h3>$1</h3><p>")
+      .replace(/^## (.*)$/gm, "</p><h2>$1</h2><p>")
+      .replace(/^# (.*)$/gm, "</p><h1>$1</h1><p>")
+      .replace(/^&gt; (.*)$/gm, "</p><blockquote>$1</blockquote><p>")
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/\*([^*]+)\*/g, "<i>$1</i>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/^- (.*)$/gm, "<li>$1</li>")
+      .replace(/\n{2,}/g, "</p><p>")
+      .replace(/\n/g, "<br/>") +
+    "</p>"
+  );
+}
+
+/** MD 编辑模态层：上传网盘并关闭（同名替换）/ 取消修改 */
+function diskMdEditorShow(articleId: string, name: string, path: string, text: string): void {
+  document.getElementById("md-edit-ov")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "md-edit-ov";
+  ov.innerHTML = `
+    <div class="md-edit">
+      <div class="me-head">
+        <span class="me-title" title="${esc(name)}">MD 编辑 · ${esc(name)}</span>
+        <button class="disk-btn ghost" id="me-preview" title="切换编辑/预览">预览</button>
+      </div>
+      <textarea id="me-text" spellcheck="false"></textarea>
+      <div id="me-view" class="me-view" hidden></div>
+      <div class="me-foot">
+        <button class="disk-btn" id="me-upload" title="上传前会做云端冲突检查">上传网盘并关闭</button>
+        <button class="disk-btn ghost" id="me-cancel">取消修改</button>
+        <span class="me-hint">云端被他人更新时会询问「覆盖 / 另存副本」</span>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const ta = ov.querySelector<HTMLTextAreaElement>("#me-text")!;
+  const view = ov.querySelector<HTMLElement>("#me-view")!;
+  const pvBtn = ov.querySelector<HTMLButtonElement>("#me-preview")!;
+  ta.value = text;
+  pvBtn.addEventListener("click", () => {
+    if (view.hidden) {
+      view.innerHTML = mdToHtml(ta.value);
+      view.hidden = false;
+      ta.hidden = true;
+      pvBtn.textContent = "编辑";
+    } else {
+      view.hidden = true;
+      ta.hidden = false;
+      pvBtn.textContent = "预览";
+    }
+  });
+  ov.querySelector("#me-cancel")!.addEventListener("click", () => {
+    diskEditing.delete(articleId);
+    ov.remove();
+    toast("已取消修改，不回传");
+  });
+  ov.querySelector("#me-upload")!.addEventListener("click", () => {
+    void (async () => {
+      const btn = ov.querySelector<HTMLButtonElement>("#me-upload")!;
+      btn.disabled = true;
+      try {
+        await api.diskFileText(path, ta.value); // 回写暂存文件
+        await diskEditUploadAfterCheck(articleId, name, path);
+        ov.remove();
+      } catch (e) {
+        btn.disabled = false;
+        toast(`上传失败：${String(e).replace(/^"|"$/g, "")}（可稍后在传输日志重试）`);
+      }
+    })();
+  });
+}
+
+/** 上传前冲突检查：重新拉一次该文章 updateTime；云端被更新 → 弹窗选「覆盖/另存副本」。
+ *  上传失败（含会话过期）由 disk_upload_files 逐文件失败事件进传输日志失败列表。 */
+async function diskEditUploadAfterCheck(articleId: string, name: string, path: string): Promise<void> {
+  const ent = diskEditing.get(articleId);
+  const spaceId = ent?.spaceId || diskSt.spaceId;
+  const subjectId = ent?.subjectId || diskParentId(diskSt.flat.get(articleId)!);
+  // 冲突检查：编辑期间的云端版本 vs 下载时版本
+  let latest = 0;
+  try {
+    const tree = await api.diskTree(spaceId);
+    latest = tree.find((x) => x.id === articleId)?.updateTime || 0;
+  } catch {
+    /* 拉不到按无冲突处理：真冲突会被同名替换掩盖，属可接受兜底 */
+  }
+  let uploadPath = path;
+  let note = "";
+  if (latest > (ent?.cloudUpdateTime || 0)) {
+    const choice = await diskEditConflict(name);
+    if (choice === "cancel") {
+      diskEditing.delete(articleId);
+      toast("已取消回传");
+      return;
+    }
+    if (choice === "copy") {
+      uploadPath = await api.diskFileCopy(path); // 副本改名 → 上传为新建文件，不覆盖
+      note = "（另存副本）";
+    }
+  }
+  await api.diskUploadFiles(spaceId, subjectId, [uploadPath]);
+  diskEditing.delete(articleId);
+  diskLog(`编辑回传：「${name}」${note}——上传完成${note ? "" : "，同名自动替换"}`, true);
+  toast("编辑内容已上传网盘");
+}
+
+/** 编辑冲突三选弹窗：覆盖云端 / 另存副本 / 取消 */
+function diskEditConflict(name: string): Promise<"overwrite" | "copy" | "cancel"> {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.id = "disk-conflict-ov";
+    ov.innerHTML = `
+      <div class="dc-box">
+        <div class="dc-title">编辑冲突</div>
+        <div class="dc-msg">「${esc(name)}」在您编辑期间已被他人在云端更新。如何处理您的修改？</div>
+        <div class="dc-actions">
+          <button class="disk-btn" id="cf-overwrite">覆盖云端</button>
+          <button class="disk-btn" id="cf-copy">另存副本</button>
+          <button class="disk-btn ghost" id="cf-cancel">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const done = (v: "overwrite" | "copy" | "cancel") => {
+      ov.remove();
+      resolve(v);
+    };
+    ov.querySelector("#cf-overwrite")!.addEventListener("click", () => done("overwrite"));
+    ov.querySelector("#cf-copy")!.addEventListener("click", () => done("copy"));
+    ov.querySelector("#cf-cancel")!.addEventListener("click", () => done("cancel"));
+  });
+}
+
 function diskRenderTree(): void {
   const tree = document.getElementById("disk-tree");
   if (!tree) return;
@@ -2385,8 +2845,8 @@ function diskRenderTree(): void {
           void diskExpand(node, opening);
         }
       } else {
-        // 点文件行 = 打开 webview 查看文档（B/S detail 页）；勾选只走 checkbox 自身事件
-        void openUrl(diskArticleUrl(node));
+        // 点文件行 = 屏幕小菜单（在线文档打开 / 在线查看 / MD 编辑 / Office 本地只读与编辑回传）；勾选只走 checkbox 自身事件
+        diskFileMenu(node, ev.clientX, ev.clientY);
       }
     });
   });
@@ -4817,6 +5277,27 @@ async function main() {
   window.setInterval(() => void fireDueSnoozes(), 30_000);
   // 网盘同步后台节拍：每 1 分钟巡检；仅在 5 的整数倍分钟判定频率条件（nextRunAt），作业单飞
   window.setInterval(() => void diskSyncTick(), 60_000);
+  // 本地编辑监视事件：编辑器释放（或 2h 超时）后按 mtime 决定是否回传
+  on<{ path: string; changed: boolean; timedOut: boolean }>("disk-edit-done", (p) => {
+    const hit = [...diskEditing.entries()].find(([, v]) => v.path === p.path);
+    if (!hit) return;
+    const [id, ent] = hit;
+    if (p.timedOut) {
+      diskEditing.delete(id);
+      diskLog(`编辑监视超时：「${ent.name}」超过 2 小时未关闭，已停止监视；请在文件菜单重新操作`, false);
+      toast("编辑监视超时，已停止");
+      return;
+    }
+    if (!p.changed) {
+      diskEditing.delete(id);
+      diskLog(`编辑结束：「${ent.name}」内容未变化，不回传`, true);
+      return;
+    }
+    void diskEditUploadAfterCheck(id, ent.name, p.path).catch((e) => {
+      diskEditing.delete(id);
+      diskLog(`编辑回传失败：「${ent.name}」${String(e).replace(/^"|"$/g, "")}（详见传输日志失败列表）`, false);
+    });
+  });
   // 迷你速览条恢复（上次开启过则随启动重建；macOS 不提供该功能）
   if (!IS_MAC && localStorage.getItem("aif_mini_bar") === "1") {
     void api.toggleMiniBar(true).catch(() => {});

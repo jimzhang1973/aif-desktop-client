@@ -266,8 +266,18 @@ export const _apiRaw = {
     invoke<void>("disk_download_files", { items, destDir, overwrite }),
   /** 递归扫描本地目录（网盘同步「本地→云端」用） */
   diskLocalScan: (dir: string) => invoke<DiskLocalFile[]>("disk_local_scan", { dir }),
+  // 本地编辑支持：编辑暂存目录 / 文本读写（MD 编辑器）/ 同目录另存副本 / 拉起编辑器+锁监视
+  diskEditDir: () => invoke<string>("disk_edit_dir"),
+  diskFileText: (path: string, content?: string) =>
+    invoke<string | null>("disk_file_text", { path, content: content ?? null }),
+  diskFileCopy: (src: string) => invoke<string>("disk_file_copy", { src }),
+  diskEditStart: (path: string, readonly: boolean) =>
+    invoke<void>("disk_edit_start", { path, readonly }),
   diskDelete: (articleIds: string[], subjectIds: string[]) =>
     invoke<DiskDeleteResult>("disk_delete", { articleIds, subjectIds }),
+  /** 新建目录（B/S knowledge/subject/save.htm，data=JSON 包裹） */
+  diskCreateDir: (spaceId: string, parentId: string, name: string) =>
+    invoke<DiskCreateDirResult>("disk_create_dir", { spaceId, parentId, name }),
   diskRegisterContextMenu: (enable: boolean) => invoke<void>("disk_register_context_menu", { enable }),
   diskContextMenuStatus: () => invoke<boolean>("disk_context_menu_status"),
 };
@@ -320,6 +330,13 @@ export interface DiskDeleteResult {
   deletedDirs: number;
   failed: string[];
   items: DiskDeleteItem[];
+}
+
+/** 新建目录结果（id=B/S 返回的目录 id，ok=false 时 msg 含原因） */
+export interface DiskCreateDirResult {
+  id: string;
+  ok: boolean;
+  msg: string | null;
 }
 
 export function on<T>(event: string, cb: (p: T) => void): Promise<UnlistenFn> {

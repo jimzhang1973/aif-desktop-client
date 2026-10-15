@@ -1232,6 +1232,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .dfm-btn:hover { background: color-mix(in srgb, var(--mc, #0ea5e9) 12%, transparent); }
 .dfm-ico { display: inline-flex; width: 16px; height: 16px; flex: none; }
 .dfm-ico svg { width: 16px; height: 16px; }
+.dfm-note { padding: 6px 11px 8px; font-size: 11px; color: var(--text-3, #999); border-top: 1px solid var(--border); line-height: 1.4; }
 
 /* ---------- 编辑冲突三选弹窗（复用 dc-box） ---------- */
 #disk-conflict-ov { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); display: flex; align-items: center; justify-content: center; z-index: 130; }

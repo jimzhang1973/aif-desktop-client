@@ -2786,6 +2786,9 @@ function diskFileMenu(node: DiskNode, x: number, y: number, openEvent?: Event): 
     if (isOffice) {
       btns.push({ act: "ro", label: "本地只读查看", title: "下载到本地并设只读，用本机关联程序打开（不回传）", icon: DFM_ICONS.eye, color: "#64748b" });
       btns.push({ act: "edit", label: "本地编辑后上传", title: "下载后用本机关联程序编辑；关闭后自动比对 mtime 回传", icon: DFM_ICONS.upload, color: "#f59e0b" });
+    } else if (!isMd) {
+      // PDF/图片等其他类型：仅支持本地查看，不支持编辑回传
+      btns.push({ act: "ro", label: "本地查看", title: "下载到本地并设只读，用本机关联程序打开（不回传）", icon: DFM_ICONS.eye, color: "#64748b" });
     }
   }
   const menu = document.createElement("div");
@@ -2800,7 +2803,10 @@ function diskFileMenu(node: DiskNode, x: number, y: number, openEvent?: Event): 
         (b) =>
           `<button class="dfm-btn" data-act="${b.act}" style="--mc:${b.color}" title="${b.title}"><span class="dfm-ico" style="color:${b.color}">${b.icon}</span>${esc(b.label)}</button>`,
       )
-      .join("");
+      .join("") +
+    (isFile && !isMd && !isOffice
+      ? `<div class="dfm-note">该类型仅支持在线/本地查看，不支持编辑后自动上传</div>`
+      : "");
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;

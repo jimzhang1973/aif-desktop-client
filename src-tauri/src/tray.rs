@@ -26,9 +26,20 @@ fn normal_icon() -> tauri::image::Image<'static> {
         .expect("加载托盘图标失败")
 }
 
+/// 闪烁「灭」帧（微信式）：不用角标小圆点，而是把常态图标**整体**变成灰色剪影
+/// （保留 alpha 轮廓、RGB 统一压灰），与常态图整帧交替，视觉上即「整个图标在闪」。
+/// 运行时由 icon.png 像素变换生成，无需额外图标资源，且天然跟随图标改版。
 fn alert_icon() -> tauri::image::Image<'static> {
-    tauri::image::Image::from_bytes(include_bytes!("../icons/icon_alert.png"))
-        .expect("加载托盘告警图标失败")
+    let img = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+        .expect("加载托盘图标失败");
+    let mut rgba = img.rgba().to_vec();
+    for px in rgba.chunks_exact_mut(4) {
+        // 中灰 (170,170,170)：浅色托盘下是暗剪影、深色托盘下是亮剪影，两侧都可见
+        px[0] = 170;
+        px[1] = 170;
+        px[2] = 170;
+    }
+    tauri::image::Image::new_owned(rgba, img.width(), img.height())
 }
 
 /// 菜单项小图标（40×40 线性风，双套配色随系统深浅模式自动切换）。

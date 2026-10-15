@@ -1240,6 +1240,17 @@ input:focus, select:focus { border-color: var(--accent); }
 .me-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .me-title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #md-edit-ov textarea { flex: 1; resize: none; border: 0; outline: none; padding: 12px 14px; font-family: Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.6; background: transparent; color: inherit; }
+/* CodeMirror 6 编辑区：占满模态中部；[hidden] 兜底（flex 容器下会被覆盖） */
+.me-editor { flex: 1; min-height: 0; overflow: hidden; }
+.me-editor[hidden] { display: none; }
+.me-editor .cm-editor { height: 100%; }
+.me-editor .cm-scroller { overflow: auto; }
+.me-view pre { background: var(--hover, rgba(0, 0, 0, .06)); border-radius: 8px; padding: 10px 12px; overflow: auto; }
+.me-view pre code { background: transparent; padding: 0; }
+.me-view table { border-collapse: collapse; margin: 6px 0; }
+.me-view th, .me-view td { border: 1px solid var(--border); padding: 3px 8px; font-size: 12.5px; }
+.me-view input[type="checkbox"] { vertical-align: middle; margin-right: 4px; }
+.me-view a { color: #1a73e8; }
 .me-view { flex: 1; overflow: auto; padding: 12px 16px; font-size: 13.5px; line-height: 1.65; user-select: text; }
 .me-view h1, .me-view h2, .me-view h3 { margin: 10px 0 6px; }
 .me-view blockquote { margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--border); color: var(--text-3, #777); }

@@ -1,4 +1,8 @@
 import "./styles.css";
+import { basicSetup, EditorView } from "codemirror";
+import { markdown } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
+import MarkdownIt from "markdown-it";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { api, on, type AccountEntry, type AiAgent, type DiskDlItem, type DiskNode, type DocRow, type HistoryMessage, type MatterBadge, type MatterRow, type MessageRow, type OpsApp, type OpsAppGroup, type QuickEntry, type RoleOption, type Settings, type SpaceRow, type TabInfo, type TodoRow, type UserInfo } from "./api";
@@ -927,7 +931,7 @@ function drawCal(): void {
       const k = calKey(d);
       const c = counts.get(k) || 0;
       html += `<button class="cal-cell cal-wk${k === calSel ? " sel" : ""}${k === todayK ? " today" : ""}" data-k="${k}">
-        <span class="cal-day">${d.getMonth() + 1}/${d.getDate()} 周${"日一二三四五六"[d.getDay()]}</span>
+        <span class="cal-day">${d.getMonth() + 1}/${d.getDate()} ${"日一二三四五六"[d.getDay()]}</span>
         <span class="cal-count${c ? "" : " zero"}">${c}</span></button>`;
     }
   } else {
@@ -2777,26 +2781,23 @@ async function diskMdEdit(node: DiskNode): Promise<void> {
   }
 }
 
-/** 极简 MD 预览渲染（标题/引用/加粗斜体/行内码/列表/段落，无第三方依赖） */
+/** MD 预览渲染：markdown-it（完整 GFM：表格/代码块/任务列表/删除线/自动链接），本地打包无 CDN */
+const mdit = new MarkdownIt({ html: false, linkify: true, breaks: true });
 function mdToHtml(src: string): string {
-  return (
-    "<p>" +
-    esc(src)
-      .replace(/^### (.*)$/gm, "</p><h3>$1</h3><p>")
-      .replace(/^## (.*)$/gm, "</p><h2>$1</h2><p>")
-      .replace(/^# (.*)$/gm, "</p><h1>$1</h1><p>")
-      .replace(/^&gt; (.*)$/gm, "</p><blockquote>$1</blockquote><p>")
-      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-      .replace(/\*([^*]+)\*/g, "<i>$1</i>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/^- (.*)$/gm, "<li>$1</li>")
-      .replace(/\n{2,}/g, "</p><p>")
-      .replace(/\n/g, "<br/>") +
-    "</p>"
-  );
+  return mdit.render(src);
 }
 
-/** MD 编辑模态层：上传网盘并关闭（同名替换）/ 取消修改 */
+/** MD 编辑模态层：上传网盘并关闭（同名替换）/ 取消修改。
+ *  编辑区为 CodeMirror 6（语法高亮/行号/快捷键，本地打包），预览为 markdown-it。 */
+const cmTheme = EditorView.theme({
+  "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent", color: "inherit" },
+  ".cm-scroller": { fontFamily: 'Consolas, "Courier New", monospace', lineHeight: "1.6" },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--text-3, #999)" },
+  ".cm-activeLine": { backgroundColor: "rgba(127, 127, 127, .08)" },
+  ".cm-activeLineGutter": { backgroundColor: "rgba(127, 127, 127, .08)" },
+  "&.cm-focused": { outline: "none" },
+});
+
 function diskMdEditorShow(articleId: string, name: string, path: string, text: string): void {
   document.getElementById("md-edit-ov")?.remove();
   const ov = document.createElement("div");
@@ -2807,7 +2808,7 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
         <span class="me-title" title="${esc(name)}">MD 编辑 · ${esc(name)}</span>
         <button class="disk-btn ghost" id="me-preview" title="切换编辑/预览">预览</button>
       </div>
-      <textarea id="me-text" spellcheck="false"></textarea>
+      <div id="me-editor" class="me-editor"></div>
       <div id="me-view" class="me-view" hidden></div>
       <div class="me-foot">
         <button class="disk-btn" id="me-upload" title="上传前会做云端冲突检查">上传网盘并关闭</button>
@@ -2816,20 +2817,30 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
       </div>
     </div>`;
   document.body.appendChild(ov);
-  const ta = ov.querySelector<HTMLTextAreaElement>("#me-text")!;
+  const edHost = ov.querySelector<HTMLElement>("#me-editor")!;
   const view = ov.querySelector<HTMLElement>("#me-view")!;
   const pvBtn = ov.querySelector<HTMLButtonElement>("#me-preview")!;
-  ta.value = text;
+  const cm = new EditorView({
+    doc: text,
+    parent: edHost,
+    extensions: [
+      basicSetup,
+      markdown({ codeLanguages: languages }), // 代码块内嵌语言高亮（js/py/sql 等）
+      EditorView.lineWrapping,
+      cmTheme,
+    ],
+  });
   pvBtn.addEventListener("click", () => {
     if (view.hidden) {
-      view.innerHTML = mdToHtml(ta.value);
+      view.innerHTML = mdToHtml(cm.state.doc.toString());
       view.hidden = false;
-      ta.hidden = true;
+      edHost.hidden = true;
       pvBtn.textContent = "编辑";
     } else {
       view.hidden = true;
-      ta.hidden = false;
+      edHost.hidden = false;
       pvBtn.textContent = "预览";
+      cm.requestMeasure(); // display:none 切回后需重新测量，否则光标/滚动错位
     }
   });
   ov.querySelector("#me-cancel")!.addEventListener("click", () => {
@@ -2842,7 +2853,7 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
       const btn = ov.querySelector<HTMLButtonElement>("#me-upload")!;
       btn.disabled = true;
       try {
-        await api.diskFileText(path, ta.value); // 回写暂存文件
+        await api.diskFileText(path, cm.state.doc.toString()); // 回写暂存文件
         await diskEditUploadAfterCheck(articleId, name, path);
         ov.remove();
       } catch (e) {

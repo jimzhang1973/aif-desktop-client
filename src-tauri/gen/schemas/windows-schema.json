@@ -255,6 +255,12 @@
           "markdownDescription": "Enables the disk_download_files command without any pre-configured scope."
         },
         {
+          "description": "Enables the disk_local_scan command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-local-scan",
+          "markdownDescription": "Enables the disk_local_scan command without any pre-configured scope."
+        },
+        {
           "description": "Enables the disk_nodes command without any pre-configured scope.",
           "type": "string",
           "const": "allow-disk-nodes",
@@ -685,6 +691,12 @@
           "type": "string",
           "const": "deny-disk-download-files",
           "markdownDescription": "Denies the disk_download_files command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_local_scan command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-local-scan",
+          "markdownDescription": "Denies the disk_local_scan command without any pre-configured scope."
         },
         {
           "description": "Denies the disk_nodes command without any pre-configured scope.",

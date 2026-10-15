@@ -87,6 +87,7 @@
       "allow-disk-context-menu-status",
       "allow-disk-delete",
       "allow-disk-download-files",
+      "allow-disk-local-scan",
       "allow-disk-nodes",
       "allow-disk-personal-space-id",
       "allow-disk-register-context-menu",

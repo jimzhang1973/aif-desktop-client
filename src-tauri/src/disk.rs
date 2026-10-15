@@ -409,7 +409,10 @@ pub fn disk_download_files(
     state: State<'_, std::sync::Arc<AppState>>,
     items: Vec<DiskDlItem>,
     dest_dir: String,
+    // 网盘同步传 true：同名文件直接覆盖写（手动下载保持 false 走防冲突重命名）
+    overwrite: Option<bool>,
 ) -> Result<(), String> {
+    let overwrite = overwrite.unwrap_or(false);
     if items.is_empty() {
         return Err("没有可下载的文件".into());
     }
@@ -502,7 +505,11 @@ pub fn disk_download_files(
                         let _ = app.emit("disk-progress", fail("创建本地子目录失败".into()));
                         continue;
                     }
-                    let path = nonconflict_path(&dir, &name);
+                    let path = if overwrite {
+                        dir.join(&name)
+                    } else {
+                        nonconflict_path(&dir, &name)
+                    };
                     match download_to(&client, &session, &url, &path).await {
                         Ok(()) => {
                             let _ = app.emit(
@@ -844,6 +851,80 @@ pub fn disk_upload_files(
         );
     });
     Ok(())
+}
+
+// ---------- 本地目录扫描（网盘同步用） ----------
+
+/// 本地文件扫描项（相对路径 + 大小 + 修改时间，供同步指纹比对）
+#[derive(Clone, serde::Serialize)]
+pub struct DiskLocalFile {
+    /// 相对扫描根目录的路径（/ 分隔，含文件名）
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+    pub name: String,
+    pub size: u64,
+    /// 本地最后修改时间（epoch 秒；「本地最后一次上传时间」指纹的比对基准）
+    pub mtime: i64,
+}
+
+/// 递归扫描本地目录：返回全部普通文件（relPath 以 / 分隔）。
+/// 防护：跳过 .开头 / $开头（隐藏、office 临时文件）、深度 ≤8 层、上限 5000 个文件，
+/// 防止误选盘根导致超长扫描。排序保证输出稳定（按相对路径）。
+#[tauri::command]
+pub fn disk_local_scan(dir: String) -> Result<Vec<DiskLocalFile>, String> {
+    const MAX_FILES: usize = 5000;
+    const MAX_DEPTH: usize = 8;
+    let root = PathBuf::from(&dir);
+    if !root.is_dir() {
+        return Err(format!("目录不存在: {dir}"));
+    }
+    fn walk(cur: &Path, rel: &str, out: &mut Vec<DiskLocalFile>, depth: usize) {
+        if depth > MAX_DEPTH || out.len() >= MAX_FILES {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(cur) else {
+            return;
+        };
+        let mut entries: Vec<_> = rd.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            if out.len() >= MAX_FILES {
+                return;
+            }
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') || name.starts_with("~$") || name.starts_with('$') {
+                continue;
+            }
+            let Ok(ft) = e.file_type() else { continue };
+            let rrel = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
+            if ft.is_dir() {
+                walk(&e.path(), &rrel, out, depth + 1);
+            } else if ft.is_file() {
+                if let Ok(md) = e.metadata() {
+                    let mtime = md
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    out.push(DiskLocalFile {
+                        rel_path: rrel,
+                        name,
+                        size: md.len(),
+                        mtime,
+                    });
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&root, "", &mut out, 0);
+    out.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+    Ok(out)
 }
 
 // ---------- 删除 ----------

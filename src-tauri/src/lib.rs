@@ -138,6 +138,7 @@ pub fn run() {
             disk::disk_context_menu_status,
             disk::disk_delete,
             disk::disk_download_files,
+            disk::disk_local_scan,
             disk::disk_nodes,
             disk::disk_personal_space_id,
             disk::disk_register_context_menu,

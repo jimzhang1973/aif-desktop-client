@@ -262,8 +262,10 @@ export const _apiRaw = {
     invoke<DiskNode[]>("disk_nodes", { spaceId, nodeId, nodeType }),
   diskUploadFiles: (spaceId: string, subjectId: string, paths: string[]) =>
     invoke<void>("disk_upload_files", { spaceId, subjectId, paths }),
-  diskDownloadFiles: (items: DiskDlItem[], destDir: string) =>
-    invoke<void>("disk_download_files", { items, destDir }),
+  diskDownloadFiles: (items: DiskDlItem[], destDir: string, overwrite = false) =>
+    invoke<void>("disk_download_files", { items, destDir, overwrite }),
+  /** 递归扫描本地目录（网盘同步「本地→云端」用） */
+  diskLocalScan: (dir: string) => invoke<DiskLocalFile[]>("disk_local_scan", { dir }),
   diskDelete: (articleIds: string[], subjectIds: string[]) =>
     invoke<DiskDeleteResult>("disk_delete", { articleIds, subjectIds }),
   diskRegisterContextMenu: (enable: boolean) => invoke<void>("disk_register_context_menu", { enable }),
@@ -301,6 +303,15 @@ export interface DiskDeleteItem {
   kind: "file" | "dir";
   ok: boolean;
   msg: string | null;
+}
+
+/** 本地目录扫描项（网盘同步「本地→云端」用） */
+export interface DiskLocalFile {
+  relPath: string;
+  name: string;
+  size: number;
+  /** 本地最后修改时间（epoch 秒） */
+  mtime: number;
 }
 
 /** 删除结果汇总（先删文件，后删目录；在线文档由前端调用前排除） */

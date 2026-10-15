@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Url, We
 
 use crate::commands::{bs_download_handler, bs_new_window_strategy, inject_session_cookies, pane_bounds_of, BS_WINDOW_SHIM};
 use crate::db;
-use crate::state::AppState;
+use crate::state::{AppState, Settings};
 
 /// 标签页数量上限（每个标签是独立渲染进程，重 JSP 页面约 200~300MB/个，不可不设上限）
 pub const TAB_LIMIT: usize = 8;
@@ -27,8 +27,17 @@ pub const TAB_LIMIT: usize = 8;
 pub const HIBERNATE_AFTER_SECS: i64 = 60 * 60;
 /// 休眠扫描周期（秒）
 const HIBERNATE_SCAN_SECS: u64 = 60;
-/// kv 持久化键：标签页会话（仅「重启后恢复标签页」开启时写入）
+/// kv 持久化键前缀：标签页会话（仅「重启后恢复标签页」开启时写入）。
+/// 完整键 = 前缀 + tab_session_key()，按入口（产品+主机）分存，多项目各自记忆各自的标签页。
 const KV_TAB_SESSION: &str = "tab_session";
+const KV_TAB_SESSION_PFX: &str = "tab_session__";
+
+/// 当前入口的会话 kv 键（产品类型 + 规范化 base_url）。
+/// 旧版为全局键 KV_TAB_SESSION；restore 时若按入口键缺失，则从旧键按 base_url 前缀过滤迁移。
+pub fn tab_session_key(settings: &Settings) -> String {
+    let host = settings.base_url.trim().trim_end_matches('/').to_lowercase();
+    format!("{}{}|{}", KV_TAB_SESSION_PFX, if settings.ops_product { "aif" } else { "dcp" }, host)
+}
 
 /// 前端标签页视图模型
 #[derive(Clone, Serialize)]
@@ -515,7 +524,8 @@ fn tab_list(state: &std::sync::Arc<AppState>) -> Vec<TabInfo> {
 
 /// 持久化（设置开启时）+ 广播列表变化
 fn persist_and_emit(app: &AppHandle, state: &std::sync::Arc<AppState>) {
-    let restore = state.settings.lock().unwrap().tab_restore;
+    let st = state.settings.lock().unwrap().clone();
+    let restore = st.tab_restore;
     let list = tab_list(state);
     if restore {
         let session = TabSession {
@@ -530,7 +540,8 @@ fn persist_and_emit(app: &AppHandle, state: &std::sync::Arc<AppState>) {
         };
         if let Ok(json) = serde_json::to_string(&session) {
             if let Ok(conn) = state.db.lock() {
-                let _ = db::kv_set(&conn, KV_TAB_SESSION, &json);
+                // 按入口分存：不同项目（产品+主机）各自记忆各自的标签页
+                let _ = db::kv_set(&conn, &tab_session_key(&st), &json);
             }
         }
     }
@@ -860,15 +871,35 @@ fn tab_restore_session_impl(
     app: AppHandle,
     state: std::sync::Arc<AppState>,
 ) -> Result<Vec<TabInfo>, String> {
-    let restore = state.settings.lock().unwrap().tab_restore;
-    if !restore {
+    let st = state.settings.lock().unwrap().clone();
+    if !st.tab_restore {
         return Ok(vec![]);
     }
+    // 按入口读取；缺失时从旧版全局键迁移（只保留当前入口 base_url 前缀的标签，防串项目）
     let raw = state
         .db
         .lock()
         .ok()
-        .and_then(|c| db::kv_get(&c, KV_TAB_SESSION))
+        .and_then(|c| {
+            let key = tab_session_key(&st);
+            match db::kv_get(&c, &key) {
+                Some(v) if !v.trim().is_empty() => Some(v),
+                _ => db::kv_get(&c, KV_TAB_SESSION).and_then(|legacy| {
+                    let s: TabSession = serde_json::from_str(&legacy).ok()?;
+                    let base = st.base_url.trim().trim_end_matches('/').to_lowercase();
+                    let tabs: Vec<StoredTab> = s
+                        .tabs
+                        .into_iter()
+                        .filter(|t| t.url.to_lowercase().starts_with(&base))
+                        .collect();
+                    if tabs.is_empty() {
+                        None
+                    } else {
+                        serde_json::to_string(&TabSession { tabs }).ok()
+                    }
+                }),
+            }
+        })
         .unwrap_or_default();
     let session: TabSession = serde_json::from_str(&raw).unwrap_or_default();
     if session.tabs.is_empty() {

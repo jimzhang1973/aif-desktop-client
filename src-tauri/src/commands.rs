@@ -353,9 +353,10 @@ pub fn save_settings(
     }
     let conn = state.db.lock().unwrap();
     db::save_settings(&conn, &settings).map_err(|e| e.to_string())?;
-    // 关闭「重启后恢复标签页」时清掉已持久化的标签会话，避免残留下次被恢复
+    // 关闭「重启后恢复标签页」时清掉已持久化的标签会话（旧全局键 + 当前入口键），避免残留下次被恢复
     if !settings.tab_restore {
         let _ = db::kv_delete(&conn, "tab_session");
+        let _ = db::kv_delete(&conn, &crate::tabs::tab_session_key(&settings));
     }
     drop(conn);
     // 产品品牌切换后同步主窗口标题与托盘提示（运维小助手 / 一表通小助手）

@@ -1454,6 +1454,19 @@ interface DiskProgressEvt {
   msg: string;
 }
 
+/** 当前用户个人空间 id（diskPersonalSpaceId 结果缓存；个人空间写权限免检） */
+let diskPersonalId = "";
+/** 空间写权限统一入口：个人空间特例——当前用户对自己的个人空间永远可写（免网络检查）；
+ *  其他空间走 B/S isEdited 判定（10 分钟缓存），检查失败不阻塞、交由服务端兜底 */
+async function diskCanWrite(spaceId: string): Promise<boolean> {
+  if (diskPersonalId && spaceId === diskPersonalId) return true;
+  try {
+    return await api.diskSpaceCanWrite(spaceId);
+  } catch {
+    return true;
+  }
+}
+
 /** 上传目标记忆键（按产品隔离：AIF/DCP 会话与个人空间数据不互通） */
 function diskTargetKey(): string {
   return `disk_last_target_${settings?.ops_product ? "aif" : "dcp"}`;
@@ -1512,15 +1525,12 @@ void on<string[]>("disk-upload-request", (paths) => {
     diskSt.pending = Array.from(new Set([...diskSt.pending, ...paths]));
     const last = diskLastTarget();
     const pid = await api.diskPersonalSpaceId().catch(() => "");
+    if (pid) diskPersonalId = pid;
     if (last && pid && last.spaceId === pid) {
-      // 写权限前置检查（个人空间通常可写；检查失败不阻塞，交由服务端兜底）
-      try {
-        if (!(await api.diskSpaceCanWrite(last.spaceId))) {
-          toast("个人空间无写权限，已取消自动上传");
-          return;
-        }
-      } catch {
-        /* 忽略 */
+      // 写权限前置检查（个人空间永远可写，diskCanWrite 内部免检）
+      if (!(await diskCanWrite(last.spaceId))) {
+        toast("个人空间无写权限，已取消自动上传");
+        return;
       }
       toast(`开始上传 ${paths.length} 个文件到「${last.name}」`);
       try {
@@ -1895,11 +1905,7 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   // ---------- 本地 → 云 ----------
   // 写权限前置检查：无写权限 → 整段跳过上传（云→本地下载为只读，不受影响）
   let canWrite = true;
-  try {
-    canWrite = await api.diskSpaceCanWrite(r.spaceId);
-  } catch {
-    canWrite = true; // 检查失败不阻塞，交由服务端兜底
-  }
+  canWrite = await diskCanWrite(r.spaceId);
   if (!canWrite) {
     entry.errors.push("空间无写权限：本轮跳过「本地→云」上传（云→本地下载不受影响）");
     diskLog(`${logTag}：空间无写权限，跳过上传（下载不受影响）`, false);
@@ -2327,6 +2333,7 @@ async function renderDisk(content: HTMLElement) {
   const spaces: { id: string; name: string; cat: string }[] = [];
   try {
     const pid = await api.diskPersonalSpaceId();
+    diskPersonalId = pid; // 缓存：个人空间写权限免检
     spaces.push({ id: pid, name: "个人空间", cat: "" });
   } catch (e) {
     document.getElementById("disk-tree")!.innerHTML =
@@ -2689,8 +2696,9 @@ const DFM_ICONS = {
 
 /** 点击文件行弹出的屏幕小菜单（fixed 定位，点击外部/Esc 关闭）：
  *  在线文档 → 在线打开；FILE 附件 → 在线查看（+MD 编辑 / Office 只读与编辑回传）；
- *  按钮彩色（图标 + 左侧色条 + hover 染色） */
-function diskFileMenu(node: DiskNode, x: number, y: number): void {
+ *  按钮彩色（图标 + 左侧色条 + hover 染色）；标题行带类型胶囊（网盘附件/在线文档） */
+let dfmOpenEvent: Event | null = null; // 打开菜单的那次点击事件：全局关闭器对它放行，避免「开完即关」
+function diskFileMenu(node: DiskNode, x: number, y: number, openEvent?: Event): void {
   diskFileMenuClose();
   const disp = diskFileDisplay(node);
   const isFile = node.nodeType === "article" && node.subtype === "FILE";
@@ -2709,8 +2717,11 @@ function diskFileMenu(node: DiskNode, x: number, y: number): void {
   }
   const menu = document.createElement("div");
   menu.id = "disk-file-menu";
+  const tag = isFile
+    ? `<span class="dfm-tag" style="--tc:#0ea5e9">网盘附件</span>`
+    : `<span class="dfm-tag" style="--tc:#8b5cf6">在线文档</span>`;
   menu.innerHTML =
-    `<div class="dfm-title" title="${esc(disp.name)}">${esc(disp.name)}</div>` +
+    `<div class="dfm-title"><span class="dfm-name" title="${esc(disp.name)}">${esc(disp.name)}</span>${tag}</div>` +
     btns
       .map(
         (b) =>
@@ -2721,6 +2732,7 @@ function diskFileMenu(node: DiskNode, x: number, y: number): void {
   const r = menu.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+  dfmOpenEvent = openEvent ?? null;
   menu.querySelectorAll<HTMLButtonElement>(".dfm-btn").forEach((b) =>
     b.addEventListener("click", () => {
       diskFileMenuClose();
@@ -2731,20 +2743,25 @@ function diskFileMenu(node: DiskNode, x: number, y: number): void {
       else if (act === "edit") void diskOfficeOpen(node, false);
     }),
   );
-  setTimeout(() => {
-    document.addEventListener("click", () => diskFileMenuClose(), { once: true });
-    document.addEventListener(
-      "keydown",
-      (ev) => {
-        if (ev.key === "Escape") diskFileMenuClose();
-      },
-      { once: true },
-    );
-  }, 0);
 }
 function diskFileMenuClose(): void {
+  dfmOpenEvent = null;
   document.getElementById("disk-file-menu")?.remove();
 }
+// 全局关闭器（模块加载即注册一次，替代旧的 once 监听）：
+// 旧实现的缺陷——once 监听在冒泡末段触发，而文件行 handler 先执行并重建了菜单，
+// 导致「点文件2 → 旧菜单关 + 新菜单被同一次点击的关闭器杀掉」，且每次重建都会再挂一个
+// 新 once 监听，形成「永远差一拍」的死循环。现在：打开菜单的那次点击直接放行，其余点击关闭。
+document.addEventListener("click", (ev) => {
+  const menu = document.getElementById("disk-file-menu");
+  if (!menu) return;
+  if (ev === dfmOpenEvent) return; // 本次点击就是打开菜单的动作
+  if (ev.composedPath().includes(menu)) return; // 点在菜单内部，由按钮自身处理
+  diskFileMenuClose();
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") diskFileMenuClose();
+});
 
 /** 下载 FILE 附件到编辑暂存目录（覆盖写），返回本地路径；失败抛错 */
 async function diskEditDownload(node: DiskNode, name: string): Promise<string> {
@@ -2895,14 +2912,10 @@ async function diskEditUploadAfterCheck(articleId: string, name: string, path: s
   const ent = diskEditing.get(articleId);
   const spaceId = ent?.spaceId || diskSt.spaceId;
   const subjectId = ent?.subjectId || diskParentId(diskSt.flat.get(articleId)!);
-  // 写权限前置检查：无写权限不能回传（编辑状态保留，用户可取消修改）
-  try {
-    if (!(await api.diskSpaceCanWrite(spaceId))) {
-      toast("该空间无写权限，不能回传编辑内容");
-      return;
-    }
-  } catch {
-    /* 权限检查失败不阻塞，交由服务端兜底 */
+  // 写权限前置检查：无写权限不能回传（编辑状态保留，用户可取消修改）；个人空间永远可写
+  if (!(await diskCanWrite(spaceId))) {
+    toast("该空间无写权限，不能回传编辑内容");
+    return;
   }
   // 冲突检查：编辑期间的云端版本 vs 下载时版本
   let latest = 0;
@@ -3018,7 +3031,7 @@ function diskRenderTree(): void {
         }
       } else {
         // 点文件行 = 屏幕小菜单（在线文档打开 / 在线查看 / MD 编辑 / Office 本地只读与编辑回传）；勾选只走 checkbox 自身事件
-        diskFileMenu(node, ev.clientX, ev.clientY);
+        diskFileMenu(node, ev.clientX, ev.clientY, ev);
       }
     });
   });
@@ -3226,13 +3239,9 @@ async function diskPickDir(): Promise<string> {
 
 /** 上传到勾选的目标目录（记忆为该空间的默认目标；文件来源：右键带入 / 文件对话框） */
 async function diskUploadTo(subject: DiskNode): Promise<void> {
-  // 写权限前置检查：无写权限直接拦截（检查失败不阻塞，交由服务端兜底）
-  try {
-    if (!(await api.diskSpaceCanWrite(diskSt.spaceId))) {
-      return toast("该空间无写权限，不能上传文件");
-    }
-  } catch {
-    /* 权限检查失败不阻塞 */
+  // 写权限前置检查：无写权限直接拦截（个人空间永远可写；检查失败不阻塞，交由服务端兜底）
+  if (!(await diskCanWrite(diskSt.spaceId))) {
+    return toast("该空间无写权限，不能上传文件");
   }
   const paths = await diskPickFiles();
   if (!paths.length) return;
@@ -4735,7 +4744,7 @@ function renderProfile(content: HTMLElement) {
     </div>
     <div class="set-row">
       ${ico("#8b5cf6", `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9v6M12 7v8M17 10v4"/>`)}
-      <div class="set-main"><div class="set-title">重启后恢复标签页</div><div class="set-desc">再次打开客户端并进入全屏模式时，自动恢复上次打开的标签页（最多 8 个；休眠的标签点击后再加载）</div></div>
+      <div class="set-main"><div class="set-title">重启后恢复标签页</div><div class="set-desc">再次打开客户端并进入全屏模式时，自动恢复上次打开的标签页；多个入口（项目）各自记忆各自的，互不串扰（最多 8 个；休眠的标签点击后再加载）</div></div>
       <label class="switch set-side"><input type="checkbox" id="set-tab-restore" ${s.tab_restore ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
     <div class="set-row">

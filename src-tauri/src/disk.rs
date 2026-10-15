@@ -630,7 +630,15 @@ pub fn disk_upload_files(
         {
             for n in parse_nodes(&unwrap_data(val)) {
                 if n.node_type == "article" && n.subtype == "FILE" {
-                    existing.entry(n.name.trim().to_lowercase()).or_insert(n.id);
+                    let name = n.name.trim().to_lowercase();
+                    let id = n.id.clone();
+                    existing.entry(name.clone()).or_insert(id.clone());
+                    // 前端展示名可能带扩展名（name.ext），两种命名约定都登记，
+                    // 否则上传文件名与文章原始名不一致时同名替换失效、误建新文件
+                    let ext = n.sub_file_type.trim().trim_start_matches('.').to_lowercase();
+                    if !ext.is_empty() && !name.ends_with(&format!(".{ext}")) {
+                        existing.entry(format!("{name}.{ext}")).or_insert(id);
+                    }
                 }
             }
         }

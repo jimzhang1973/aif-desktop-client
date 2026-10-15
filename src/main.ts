@@ -2715,7 +2715,10 @@ function diskFileDisplay(n: DiskNode): { name: string; ext: string } {
   const ext = (n.subtype === "FILE" ? n.subFileType || "" : DISK_SUBTYPE_EXT[n.subtype] || "")
     .replace(/^\./, "")
     .toLowerCase();
-  return { name: ext ? `${n.name}.${ext}` : n.name, ext };
+  // 文章名本身已带该扩展名（本地上传的文件通常如此）时不再重复拼接，否则下载/上传名变成 xxx.md.md，
+  // 与云端原名不一致 → 同名替换判定失效、上传成新文件
+  const name = ext && !n.name.toLowerCase().endsWith(`.${ext}`) ? `${n.name}.${ext}` : n.name;
+  return { name, ext };
 }
 
 /** 文件行类型图标：复用文档列表的 docTypeStyle 图标体系（W/X/P/PDF/通用彩条扩展名） */
@@ -3008,7 +3011,16 @@ async function diskEditUploadAfterCheck(articleId: string, name: string, path: s
       note = "（另存副本）";
     }
   }
-  await api.diskUploadFiles(spaceId, subjectId, [uploadPath]);
+  // 建传输任务进传输管理器（非静默）：逐文件进度/失败由 disk-progress 事件自动写入，
+  // 「全部完成」事件自动收尾该任务并按 diskUploadSubjectId 刷新目录树
+  diskTransferStart("upload", `编辑回传 · ${name}${note}`, 1, {});
+  diskUploadSubjectId = subjectId;
+  try {
+    await api.diskUploadFiles(spaceId, subjectId, [uploadPath]);
+  } catch (e) {
+    diskTransferFailStart(diskActiveTask.upload || "", String(e).replace(/^"|"$/g, ""));
+    throw e;
+  }
   diskEditing.delete(articleId);
   diskLog(`编辑回传：「${name}」${note}——上传完成${note ? "" : "，同名自动替换"}`, true);
   toast("编辑内容已上传网盘");

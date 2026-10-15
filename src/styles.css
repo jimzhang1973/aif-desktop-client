@@ -1091,9 +1091,6 @@ input:focus, select:focus { border-color: var(--accent); }
 .dark .disk-bar { background: rgba(255, 255, 255, .05); }
 .disk-spacerow { display: flex; align-items: center; gap: 8px; padding: 4px 10px 8px; border-bottom: 1px solid var(--border); }
 .disk-spacerow .disk-select { margin: 0; width: 260px; flex: none; }
-.db-ico { font-weight: 700; margin-right: 2px; }
-.db-ico.up { color: #10b981; }
-.db-ico.down { color: #3b82f6; }
 .disk-hint { font-size: 12.5px; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 自定义空间下拉（文字筛选 + 彩色分类标题行） */

@@ -2414,7 +2414,7 @@ async function renderDisk(content: HTMLElement) {
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
         <button class="disk-btn" id="disk-sync-bind" title="将当前唯一勾选的云端目录与本地目录建立同步">＋同步</button>
         <span class="tb-spacer"></span>
-        <button class="disk-btn ghost" id="disk-sync" title="网盘同步规则">⇄ 规则<span class="sync-dot" id="disk-sync-dot" hidden title="自动同步已开启"></span></button>
+        <button class="disk-btn ghost" id="disk-sync" title="网盘同步规则">规则<span class="sync-dot" id="disk-sync-dot" hidden title="自动同步已开启"></span></button>
         <button class="disk-btn ghost" id="disk-transfer" title="传输日志">日志<span class="badge" id="disk-transfer-badge"></span></button>
       </div>
       <div class="disk-spacerow">

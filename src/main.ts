@@ -3902,15 +3902,17 @@ function msgCardHtml(m: HistoryMessage): string {
   const t = m.title.trim();
   const b = m.body.trim();
   const showBody = b && b !== t && !t.startsWith(b) && !b.startsWith(t);
-  // 正文以发送人名开头时隐藏发送人行（同一信息不重复出现）
-  const showSender = m.sender && !b.startsWith(m.sender.trim());
+  // 正文以发送人名开头时隐藏发送人行（同一信息不重复出现）；办公事项的发起人已在正文/标题中，不再重复
+  const showSender = ty.label !== "办公事项" && m.sender && !b.startsWith(m.sender.trim());
   const unread = unreadIds.has(m.id);
   return `
       <div class="msg-row${unread ? " unread" : ""}" data-id="${esc(m.id)}" data-url="${esc(m.url)}" data-title="${esc(m.title)}" data-body="${esc(b)}" title="${esc([m.title, m.sender, m.time_str].filter(Boolean).join("　"))}">
         <div class="msg-when">
           <div class="msg-hm">${esc(fmtRelTime(m.time_str))}</div>
-          <div class="msg-cat" style="color:${ty.color};background:${ty.color}14" title="${esc(ty.label)}">${catWrap(ty.label)}</div>
-          <button class="snooze-btn" data-snooze type="button" title="30 分钟后提醒我">稍后</button>
+          <div class="msg-cat-slot">
+            <div class="msg-cat" style="color:${ty.color};background:${ty.color}14" title="${esc(ty.label)}">${catWrap(ty.label)}</div>
+            <button class="snooze-btn" data-snooze type="button" title="30 分钟后提醒我"><span class="sb-short">稍后</span><span class="sb-long">消息提醒</span></button>
+          </div>
         </div>
         <div class="msg-main">
           <div class="li-title">${unread ? '<span class="msg-unread-dot" title="未读"></span>' : ""}<span class="msg-ico" style="background:${ty.color}" title="${esc(ty.label)}"><svg viewBox="0 0 24 24">${ty.glyph}</svg></span><span class="msg-title-text">${esc(m.title)}</span></div>

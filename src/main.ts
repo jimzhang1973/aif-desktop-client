@@ -2932,6 +2932,14 @@ const cmTheme = EditorView.theme({
 
 function diskMdEditorShow(articleId: string, name: string, path: string, text: string): void {
   document.getElementById("md-edit-ov")?.remove();
+  // 内嵌标签是原生 webview，永远盖在主窗 DOM（含本全屏编辑器）之上：
+  // 编辑器打开期间临时隐藏全部标签（实例与页面状态保留），关闭时恢复——同入口切换弹窗的处理
+  const tabsHidden = layoutMode === "full";
+  if (tabsHidden) void api.tabHideAll().catch(() => {});
+  const closeOv = () => {
+    ov.remove();
+    if (tabsHidden) void api.tabRestoreAll().catch(() => {});
+  };
   const ov = document.createElement("div");
   ov.id = "md-edit-ov";
   ov.innerHTML = `
@@ -2975,7 +2983,7 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
   });
   ov.querySelector("#me-cancel")!.addEventListener("click", () => {
     diskEditing.delete(articleId);
-    ov.remove();
+    closeOv();
     toast("已取消修改，不回传");
   });
   ov.querySelector("#me-upload")!.addEventListener("click", () => {
@@ -2985,7 +2993,7 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
       try {
         await api.diskFileText(path, cm.state.doc.toString()); // 回写暂存文件
         await diskEditUploadAfterCheck(articleId, name, path);
-        ov.remove();
+        closeOv();
       } catch (e) {
         btn.disabled = false;
         toast(`上传失败：${String(e).replace(/^"|"$/g, "")}（可稍后在传输日志重试）`);

@@ -1231,8 +1231,10 @@ type TransferTask = {
   startedAt: number;
   items: TransferItem[]; // 逐文件结果
   meta: TransferMeta;
+  silent?: boolean; // 自动同步任务：只做统计载体，不进传输日志/徽标/持久化
 };
 let diskTransfers: TransferTask[] = [];
+const diskSilentTasks: TransferTask[] = []; // 自动同步专用任务（内存态，不入传输日志）
 const diskActiveTask: Record<"upload" | "download" | "delete", string> = { upload: "", download: "", delete: "" };
 
 /** 当前入口键（与常用入口主键同口径：产品|网址|账号）；登录就绪前为空串（走 legacy 键） */
@@ -1245,18 +1247,26 @@ function transferStoreKey(): string {
   return diskCurEntryKey ? `aif_disk_transfers__${diskCurEntryKey}` : "aif_disk_transfers";
 }
 
+/** 传输日志保留 7 天（读写双侧过滤，与同步日志同策略） */
+const TRANSFER_TTL = 7 * 24 * 3600 * 1000;
+
 function diskTransferLoad(): void {
   try {
     const raw = JSON.parse(localStorage.getItem(transferStoreKey()) || "[]") as TransferTask[];
     for (const t of raw) if (t.status === "running") t.status = "failed"; // 重载后残留的运行态视为中断
-    diskTransfers = raw.slice(0, 50);
+    const floor = Date.now() - TRANSFER_TTL;
+    diskTransfers = raw.filter((t) => t && t.startedAt >= floor).slice(0, 50); // 7 天过期剔除
   } catch {
     diskTransfers = [];
   }
 }
 function diskTransferPersist(): void {
   try {
-    localStorage.setItem(transferStoreKey(), JSON.stringify(diskTransfers.slice(0, 50)));
+    const floor = Date.now() - TRANSFER_TTL;
+    localStorage.setItem(
+      transferStoreKey(),
+      JSON.stringify(diskTransfers.filter((t) => t.startedAt >= floor).slice(0, 50)),
+    );
   } catch {
     /* 忽略持久化失败 */
   }
@@ -1285,18 +1295,22 @@ function diskOnEntryReady(): void {
   }
   diskSyncArm(); // 装载本入口同步配置 + 计算第一个可执行时间点
 }
-function diskTransferStart(kind: "upload" | "download" | "delete", target: string, total: number, meta: TransferMeta = {}): TransferTask {
-  const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta };
-  diskTransfers.unshift(task);
+function diskTransferStart(kind: "upload" | "download" | "delete", target: string, total: number, meta: TransferMeta = {}, silent = false): TransferTask {
+  const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta, silent };
+  if (silent) {
+    diskSilentTasks.unshift(task); // 自动同步：不进传输日志/徽标/持久化，仅供逐文件统计
+  } else {
+    diskTransfers.unshift(task);
+    diskTransferBadge();
+    diskTransferRender();
+    diskTransferPersist();
+  }
   diskActiveTask[kind] = task.id;
-  diskTransferBadge();
-  diskTransferRender();
-  diskTransferPersist();
   return task;
 }
 function diskTransferFind(kind: "upload" | "download" | "delete"): TransferTask | undefined {
   const id = diskActiveTask[kind];
-  return id ? diskTransfers.find((t) => t.id === id) : undefined;
+  return id ? diskTransfers.find((t) => t.id === id) ?? diskSilentTasks.find((t) => t.id === id) : undefined;
 }
 function diskTransferItem(kind: "upload" | "download" | "delete", name: string, ok: boolean, msg: string, done?: number, total?: number): void {
   const t = diskTransferFind(kind);
@@ -1317,6 +1331,11 @@ function diskTransferFinish(kind: "upload" | "download" | "delete", total: numbe
   const t = diskTransferFind(kind);
   diskActiveTask[kind] = "";
   if (!t) return;
+  if (t.silent) {
+    const i = diskSilentTasks.indexOf(t);
+    if (i >= 0) diskSilentTasks.splice(i, 1); // 自动同步任务收尾即销毁，不留痕
+    return;
+  }
   t.total = total || t.total;
   t.done = t.total;
   const failed = t.items.filter((i) => !i.ok && !i.muted).length;
@@ -1329,10 +1348,11 @@ function diskTransferFinish(kind: "upload" | "download" | "delete", total: numbe
   diskTransferPersist();
 }
 function diskTransferFailStart(id: string, err: string): void {
-  const t = diskTransfers.find((x) => x.id === id);
+  const t = diskTransfers.find((x) => x.id === id) ?? diskSilentTasks.find((x) => x.id === id);
   if (!t) return;
   t.status = "failed";
   t.items.push({ name: "启动失败", ok: false, msg: err.replace(/^"|"$/g, "") });
+  if (t.silent) return; // 自动同步任务：失败统计由 diskTaskStats 读取，不打扰传输日志
   diskTransferBadge();
   diskTransferRender();
   diskTransferPersist();
@@ -1627,6 +1647,7 @@ type SyncLogEntry = {
   upOk: number;
   upFail: number;
   upFails: SyncFailItem[];
+  upSkip?: number; // 同名在线文档跳过数（非失败：本地有改动但云端为在线文档，登记指纹后不再重复提示）
   skippedNoDir: number; // 云端无同名目录被跳过的本地文件数
   errors: string[]; // 规则级错误（如目录树拉取失败）
 };
@@ -1663,9 +1684,9 @@ function syncLogClear(): void {
     /* 忽略 */
   }
 }
-/** 从传输任务读取逐文件统计（含白名单拦截/启动失败等项） */
+/** 从传输任务读取逐文件统计（含白名单拦截/启动失败等项）；自动同步的静默任务同样可查 */
 function diskTaskStats(taskId: string): { ok: number; fail: number; fails: SyncFailItem[] } {
-  const t = diskTransfers.find((x) => x.id === taskId);
+  const t = diskTransfers.find((x) => x.id === taskId) ?? diskSilentTasks.find((x) => x.id === taskId);
   if (!t) return { ok: 0, fail: 0, fails: [] };
   const fails = t.items.filter((i) => !i.ok);
   return {
@@ -1859,7 +1880,8 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     dlMarks.push({ rel: key, updateTime: node.updateTime });
   }
   if (dlItems.length) {
-    const task = diskTransferStart("download", `同步 ↓ ${r.subjectPath}`, dlItems.length, {});
+    // 自动同步任务 silent=true：不写传输日志，仅作逐文件统计载体
+    const task = diskTransferStart("download", `同步 ↓ ${r.subjectPath}`, dlItems.length, {}, true);
     diskLog(`${logTag}：云→本地下传 ${dlItems.length} 个文件`, true);
     const ok = await runDiskJob("download", () => api.diskDownloadFiles(dlItems, r.localDir, true));
     if (ok) for (const m of dlMarks) fp.dl[m.rel] = m.updateTime;
@@ -1938,16 +1960,17 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     const rawRelDir = f.relPath.includes("/") ? f.relPath.slice(0, f.relPath.lastIndexOf("/")) : "";
     // 本地目录名做云端合法性净化（非法字符替换为 _），分组与建目录均用净化后路径
     const relDir = rawRelDir ? rawRelDir.split("/").map(sanitizeDiskName).join("/") : "";
+    if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改（含同名在线文档已登记）→ 静默跳过
     const cloud = cloudMap.get(key);
     if (cloud && cloud.subtype !== "FILE") {
-      // 同名在线文档：仅下载方向存在，本地上传/替换被禁止
-      entry.upFails.push({ name: f.relPath, msg: "同名在线文档，不支持上传/替换" });
-      entry.upFail++;
+      // 同名在线文档：不支持上传/替换。计为「跳过」而非失败，并登记指纹——
+      // 文件不再修改就不再重复提示；本地改动后提示一次并刷新指纹
+      entry.upSkip = (entry.upSkip || 0) + 1;
+      fp.up[key] = f.mtime;
       continue;
     }
     if (cloud && diskEditing.has(cloud.id)) continue; // 该云端文件正被本地编辑：跳过
     if (cloud) {
-      if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改
       if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新
     }
     if (!relDir) {
@@ -1968,7 +1991,8 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   }
   for (const [relDir, batch] of upByDir) {
     const subjectId = relDir ? ensuredDirs.get(relDir.toLowerCase())! : r.subjectId;
-    const task = diskTransferStart("upload", `同步 ↑ ${r.subjectPath}${relDir ? "/" + relDir : ""}`, batch.length, {});
+    // 自动同步任务 silent=true：不写传输日志，仅作逐文件统计载体
+    const task = diskTransferStart("upload", `同步 ↑ ${r.subjectPath}${relDir ? "/" + relDir : ""}`, batch.length, {}, true);
     diskLog(`${logTag}：本→云上传 ${batch.length} 个文件${relDir ? `（${relDir}）` : ""}`, true);
     const ok = await runDiskJob("upload", () => api.diskUploadFiles(r.spaceId, subjectId, batch.map((b) => b.path)));
     if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
@@ -2027,6 +2051,7 @@ function diskSyncRender(): void {
           <div class="sl-stats">
             <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
             <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
+            ${e.upSkip ? `<span class="sl-dim" title="云端存在同名在线文档，不支持上传/替换；已登记，文件不再改动不会重复提示">跳过（同名在线文档）${e.upSkip}</span>` : ""}
             ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}
           </div>
           ${failList(e.dlFails)}${failList(e.upFails)}

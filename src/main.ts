@@ -1479,6 +1479,38 @@ function diskLastTarget(): { spaceId: string; subjectId: string; name: string } 
   }
 }
 
+/** 浏览位置记忆键（与上传目标记忆分键：浏览到哪 ≠ 上传到哪，互不干扰） */
+function diskPosKey(): string {
+  return `disk_last_pos_${settings?.ops_product ? "aif" : "dcp"}`;
+}
+function diskLastPos(): { spaceId: string; subjectId: string; name: string } | null {
+  try {
+    return JSON.parse(localStorage.getItem(diskPosKey()) || "null");
+  } catch {
+    return null;
+  }
+}
+
+/** 记忆「当前空间/目录」：切空间、展开目录时即时刷新（而非仅上传时写入），
+ *  保证下次进入网盘页恢复的是最近浏览的位置。
+ *  subjectId 传空=仅刷新空间：同空间保留原目录记忆，换空间则清掉旧目录。 */
+function diskMemTarget(subjectId = "", name = ""): void {
+  try {
+    const prev = diskLastPos();
+    const same = !!prev && prev.spaceId === diskSt.spaceId;
+    localStorage.setItem(
+      diskPosKey(),
+      JSON.stringify({
+        spaceId: diskSt.spaceId,
+        subjectId: subjectId || (same ? prev?.subjectId || "" : ""),
+        name: name || (same ? prev?.name || "" : ""),
+      }),
+    );
+  } catch {
+    /* 忽略 */
+  }
+}
+
 function diskLog(line: string, ok: boolean): void {
   const el = document.getElementById("disk-log");
   if (!el) return;
@@ -2389,9 +2421,9 @@ async function renderDisk(content: HTMLElement) {
         )
         .join("");
   }
-  // 恢复上次目标所在空间，否则个人空间
-  const last = diskLastTarget();
-  sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
+  // 恢复最近浏览的空间（无浏览记忆时回退上传目标记忆，兼容旧版数据），否则个人空间
+  const pos = diskLastPos() || diskLastTarget();
+  sel.value = pos && spaces.some((s) => s.id === pos.spaceId) ? pos.spaceId : spaces[0].id;
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   // 传输/日志管理器抽屉
@@ -2527,6 +2559,7 @@ function sanitizeDiskName(name: string): string {
  *  展开/级联时动态补拉兜底（见 diskFetchChildren）。查看/级联命中内存时零请求。 */
 async function diskLoadSpace(spaceId: string): Promise<void> {
   diskSt.spaceId = spaceId;
+  diskMemTarget(); // 即时刷新空间记忆（换空间则清除旧目录记忆）
   diskSt.loaded.clear();
   diskSt.children.clear();
   diskSt.flat.clear();
@@ -2557,6 +2590,27 @@ async function diskLoadSpace(spaceId: string): Promise<void> {
   diskMarkLoadedFromIndex();
   // 默认全部折叠：用户点目录名逐级展开
   diskRenderTree();
+  // 恢复记忆目录：沿父链自顶向下展开（子树清单已在全量索引里，无需再请求）；
+  // 记忆目录已被删除/无权限时静默放弃，停在根列表
+  const last = diskLastPos();
+  if (last && last.spaceId === spaceId && last.subjectId) {
+    const node = diskSt.flat.get(last.subjectId);
+    if (node && node.nodeType === "subject") {
+      const chain: DiskNode[] = [];
+      let cur: DiskNode | undefined = node;
+      for (;;) {
+        chain.unshift(cur!);
+        const pid = diskParentId(cur!);
+        if (!pid || pid === spaceId) break;
+        cur = diskSt.flat.get(pid);
+        if (!cur) break;
+      }
+      if (chain[0] && diskSt.roots.some((r) => r.id === chain[0].id)) {
+        for (const n of chain) diskSt.expanded.add(n.id);
+        diskRenderTree();
+      }
+    }
+  }
   diskUpdateButtons();
 }
 
@@ -3052,9 +3106,13 @@ function diskRenderTree(): void {
   });
 }
 
-/** 展开/收起目录：展开时确保子列表已加载（未覆盖的目录自动补拉），随后重绘树 */
+/** 展开/收起目录：展开时确保子列表已加载（未覆盖的目录自动补拉），随后重绘树；
+ *  展开动作即时刷新「当前目录」记忆（下次进入恢复到该位置） */
 async function diskExpand(node: DiskNode, opening: boolean): Promise<void> {
-  if (opening) await diskEnsureLoaded(node);
+  if (opening) {
+    await diskEnsureLoaded(node);
+    diskMemTarget(node.id, node.name);
+  }
   diskRenderTree();
 }
 

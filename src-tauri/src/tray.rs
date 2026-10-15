@@ -26,15 +26,19 @@ fn normal_icon() -> tauri::image::Image<'static> {
         .expect("加载托盘图标失败")
 }
 
-/// 闪烁「灭」帧（微信式明灭）：与常态图**整帧**交替的透明帧（全像素 alpha=0，
-/// 视觉上图标消失一拍再亮起）。尺寸取常态图原图尺寸，避免个别缩放场景按 0 尺寸处理。
-/// 运行时由 icon.png 像素清零生成，无需额外图标资源，且天然跟随图标改版。
+/// 闪烁「灭」帧：半透明常态图 —— RGB 原样保留，alpha 整体乘以暗率，
+/// 呈现为原图的淡淡残影，与常态图整帧交替。比全透明明灭柔和、比灰剪影好看。
+/// 运行时由 icon.png 像素变换生成，无需额外图标资源，且天然跟随图标改版。
 fn alert_icon() -> tauri::image::Image<'static> {
+    /// 灭帧不透明度（0~1）：值越小残影越淡
+    const DIM: f32 = 0.3;
     let img = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
         .expect("加载托盘图标失败");
-    let w = img.width();
-    let h = img.height();
-    tauri::image::Image::new_owned(vec![0u8; img.rgba().len()], w, h)
+    let mut rgba = img.rgba().to_vec();
+    for px in rgba.chunks_exact_mut(4) {
+        px[3] = (px[3] as f32 * DIM).round() as u8;
+    }
+    tauri::image::Image::new_owned(rgba, img.width(), img.height())
 }
 
 /// 菜单项小图标（40×40 线性风，双套配色随系统深浅模式自动切换）。

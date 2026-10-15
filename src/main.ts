@@ -2419,6 +2419,7 @@ async function renderDisk(content: HTMLElement) {
       </div>
       <div class="disk-spacerow">
         <select id="disk-space" class="disk-select" title="选择空间"></select>
+        <input id="disk-space-filter" class="disk-search" type="text" placeholder="搜索空间…" spellcheck="false" />
         <span class="disk-hint" id="disk-hint"></span>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
@@ -2460,12 +2461,14 @@ async function renderDisk(content: HTMLElement) {
     /* 空间列表拉取失败不阻塞：个人空间仍可用 */
   }
   diskSt.spaces = spaces;
-  // 原生 select + optgroup 按分类分组（个人空间置顶不分组）
+  // 原生 select + optgroup 按分类分组（个人空间置顶不分组）；支持搜索框按名称/分类过滤
   const sel = document.getElementById("disk-space") as HTMLSelectElement;
-  {
+  const fillSpaceOptions = (filter: string): void => {
+    const kw = filter.trim().toLowerCase();
+    const hit = (s: { name: string; cat: string }): boolean => !kw || s.name.toLowerCase().includes(kw) || s.cat.toLowerCase().includes(kw);
     const groups: { name: string; opts: { id: string; name: string }[] }[] = [];
     for (const s of spaces) {
-      if (!s.cat) continue;
+      if (!s.cat || !hit(s)) continue;
       let g = groups.find((x) => x.name === s.cat);
       if (!g) {
         g = { name: s.cat, opts: [] };
@@ -2474,7 +2477,7 @@ async function renderDisk(content: HTMLElement) {
       g.opts.push({ id: s.id, name: s.name });
     }
     const plain = spaces
-      .filter((s) => !s.cat)
+      .filter((s) => !s.cat && hit(s))
       .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`)
       .join("");
     sel.innerHTML =
@@ -2485,11 +2488,19 @@ async function renderDisk(content: HTMLElement) {
             `<optgroup label="${esc(g.name)}">${g.opts.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join("")}</optgroup>`,
         )
         .join("");
-  }
+  };
+  fillSpaceOptions("");
   // 恢复最近浏览的空间（无浏览记忆时回退上传目标记忆，兼容旧版数据），否则个人空间
   const pos = diskLastPos() || diskLastTarget();
   sel.value = pos && spaces.some((s) => s.id === pos.spaceId) ? pos.spaceId : spaces[0].id;
   sel.addEventListener("change", () => void diskLoadSpace(sel.value));
+  // 空间搜索框：输入即过滤下拉选项（命中名称或分类）；当前选中项被过滤掉时保持原选中不动，仅缩小可选范围
+  const filterInput = document.getElementById("disk-space-filter") as HTMLInputElement;
+  filterInput.addEventListener("input", () => {
+    const cur = sel.value;
+    fillSpaceOptions(filterInput.value);
+    if (spaces.some((s) => s.id === cur) && sel.querySelector(`option[value="${CSS.escape(cur)}"]`)) sel.value = cur;
+  });
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   // 传输/日志管理器抽屉
   const drawer = document.getElementById("disk-drawer")!;

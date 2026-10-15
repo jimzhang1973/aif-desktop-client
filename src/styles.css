@@ -1087,10 +1087,13 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-tree-item.is-file .tname { font-weight: 400; color: var(--text-2, #444); }
 /* 工具条（第一行）+ 空间选择行（第二行）：工具栏位于下拉菜单上面 */
 /* 工具栏行加底纹，与树区/空间行区分，加强辨识度（暗色用半透明白） */
-.disk-bar { display: flex; align-items: center; gap: 3px; padding: 8px 10px 4px; background: var(--hover, rgba(0, 0, 0, .045)); border-bottom: 1px solid var(--border); }
+.disk-bar { display: flex; align-items: center; gap: 2px; padding: 8px 10px 4px; background: var(--hover, rgba(0, 0, 0, .045)); border-bottom: 1px solid var(--border); }
 .dark .disk-bar { background: rgba(255, 255, 255, .05); }
 .disk-spacerow { display: flex; align-items: center; gap: 8px; padding: 4px 10px 8px; border-bottom: 1px solid var(--border); }
-.disk-spacerow .disk-select { margin: 0; width: 260px; flex: none; }
+.disk-spacerow .disk-select { margin: 0; width: 180px; flex: none; }
+.disk-search { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 12.5px; color: inherit; outline: none; }
+.disk-search:focus { border-color: #0ea5e9; }
+.disk-search::placeholder { color: var(--text-3, #aaa); }
 .disk-hint { font-size: 12.5px; color: var(--text-3, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 自定义空间下拉（文字筛选 + 彩色分类标题行） */

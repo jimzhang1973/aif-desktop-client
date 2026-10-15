@@ -2804,11 +2804,12 @@ function diskFileIconHtml(n: DiskNode): string {
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
 }
 
-/** 文档查看页 URL：B/S 官方 detail 页，DOC/MARKDOWN/FILE(docx/txt…) 实测通用（2026-10-14 探测） */
+/** 文档查看页 URL：B/S 官方 detail 页，DOC/MARKDOWN/FILE(docx/txt…) 实测通用（2026-10-14 探测）。
+ *  追加 articleShowMessageBox=true：与消息跳转一致，B/S 端打开时弹出文档展示框 */
 function diskArticleUrl(n: DiskNode): string {
   const base = (settings?.base_url || "").replace(/\/+$/, "");
   const root = settings?.ops_product ? "AIF" : "DCP";
-  return `${base}/${root}/knowledge/article/detail.htm?id=${encodeURIComponent(n.id)}`;
+  return `${base}/${root}/knowledge/article/detail.htm?id=${encodeURIComponent(n.id)}&articleShowMessageBox=true`;
 }
 
 // ---------- 网盘文件点击菜单 / 内置 MD 编辑器 / 本地 Office 编辑回传 ----------

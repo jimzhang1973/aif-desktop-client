@@ -2829,8 +2829,9 @@ function mdToHtml(src: string): string {
   return mdit.render(src);
 }
 
-/** MD 编辑模态层：上传网盘并关闭（同名替换）/ 取消修改。
- *  编辑区为 CodeMirror 6（语法高亮/行号/快捷键，本地打包），预览为 markdown-it。 */
+/** MD 编辑模态层（全屏、左右分栏：左编辑右实时预览）：
+ *  编辑区 CodeMirror 6，预览 markdown-it；底部「保存上传/取消编辑」彩色按钮。 */
+let mdPreviewTimer = 0;
 const cmTheme = EditorView.theme({
   "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent", color: "inherit" },
   ".cm-scroller": { fontFamily: 'Consolas, "Courier New", monospace', lineHeight: "1.6" },
@@ -2848,20 +2849,22 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
     <div class="md-edit">
       <div class="me-head">
         <span class="me-title" title="${esc(name)}">MD 编辑 · ${esc(name)}</span>
-        <button class="disk-btn ghost" id="me-preview" title="切换编辑/预览">预览</button>
+        <span class="me-mode">左侧编辑 · 右侧实时预览</span>
       </div>
-      <div id="me-editor" class="me-editor"></div>
-      <div id="me-view" class="me-view" hidden></div>
+      <div class="me-split">
+        <div id="me-editor" class="me-editor"></div>
+        <div id="me-view" class="me-view"></div>
+      </div>
       <div class="me-foot">
-        <button class="disk-btn" id="me-upload" title="上传前会做云端冲突检查">上传网盘并关闭</button>
-        <button class="disk-btn ghost" id="me-cancel">取消修改</button>
+        <button class="disk-btn me-btn" id="me-upload" style="--mc:#10b981" title="上传前会做云端冲突检查">保存上传</button>
+        <button class="disk-btn me-btn" id="me-cancel" style="--mc:#64748b" title="放弃修改，不上传">取消编辑</button>
         <span class="me-hint">云端被他人更新时会询问「覆盖 / 另存副本」</span>
       </div>
     </div>`;
   document.body.appendChild(ov);
   const edHost = ov.querySelector<HTMLElement>("#me-editor")!;
   const view = ov.querySelector<HTMLElement>("#me-view")!;
-  const pvBtn = ov.querySelector<HTMLButtonElement>("#me-preview")!;
+  view.innerHTML = mdToHtml(text); // 初始即渲染右侧预览
   const cm = new EditorView({
     doc: text,
     parent: edHost,
@@ -2870,20 +2873,16 @@ function diskMdEditorShow(articleId: string, name: string, path: string, text: s
       markdown({ codeLanguages: languages }), // 代码块内嵌语言高亮（js/py/sql 等）
       EditorView.lineWrapping,
       cmTheme,
+      // 输入实时刷新右侧预览（300ms 防抖，避免每个按键都整段重渲染）
+      EditorView.updateListener.of((u) => {
+        if (!u.docChanged) return;
+        window.clearTimeout(mdPreviewTimer);
+        mdPreviewTimer = window.setTimeout(() => {
+          const el = document.getElementById("me-view");
+          if (el) el.innerHTML = mdToHtml(u.state.doc.toString());
+        }, 300);
+      }),
     ],
-  });
-  pvBtn.addEventListener("click", () => {
-    if (view.hidden) {
-      view.innerHTML = mdToHtml(cm.state.doc.toString());
-      view.hidden = false;
-      edHost.hidden = true;
-      pvBtn.textContent = "编辑";
-    } else {
-      view.hidden = true;
-      edHost.hidden = false;
-      pvBtn.textContent = "预览";
-      cm.requestMeasure(); // display:none 切回后需重新测量，否则光标/滚动错位
-    }
   });
   ov.querySelector("#me-cancel")!.addEventListener("click", () => {
     diskEditing.delete(articleId);

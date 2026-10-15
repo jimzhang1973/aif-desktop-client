@@ -1238,13 +1238,14 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* ---------- 内置 MD 编辑器 ---------- */
 #md-edit-ov { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; z-index: 125; }
-.md-edit { width: min(760px, 92vw); height: min(640px, 88vh); background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px rgba(0, 0, 0, .3); display: flex; flex-direction: column; overflow: hidden; }
+.md-edit { width: 97vw; height: 95vh; max-width: none; background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px rgba(0, 0, 0, .3); display: flex; flex-direction: column; overflow: hidden; }
 .dark .md-edit { background: #232323; }
 .me-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .me-title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#md-edit-ov textarea { flex: 1; resize: none; border: 0; outline: none; padding: 12px 14px; font-family: Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.6; background: transparent; color: inherit; }
-/* CodeMirror 6 编辑区：占满模态中部；[hidden] 兜底（flex 容器下会被覆盖） */
-.me-editor { flex: 1; min-height: 0; overflow: hidden; }
+.me-mode { flex: none; font-size: 11px; color: var(--text-3, #999); }
+/* 左右分栏：左 CodeMirror 编辑，右 markdown-it 实时预览；[hidden] 兜底 */
+.me-split { flex: 1; min-height: 0; display: flex; }
+.me-editor { flex: 1 1 50%; min-width: 0; overflow: hidden; border-right: 1px solid var(--border); }
 .me-editor[hidden] { display: none; }
 .me-editor .cm-editor { height: 100%; }
 .me-editor .cm-scroller { overflow: auto; }
@@ -1254,12 +1255,16 @@ input:focus, select:focus { border-color: var(--accent); }
 .me-view th, .me-view td { border: 1px solid var(--border); padding: 3px 8px; font-size: 12.5px; }
 .me-view input[type="checkbox"] { vertical-align: middle; margin-right: 4px; }
 .me-view a { color: #1a73e8; }
-.me-view { flex: 1; overflow: auto; padding: 12px 16px; font-size: 13.5px; line-height: 1.65; user-select: text; }
+.me-view { flex: 1 1 50%; min-width: 0; overflow: auto; padding: 12px 16px; font-size: 13.5px; line-height: 1.65; user-select: text; }
 .me-view h1, .me-view h2, .me-view h3 { margin: 10px 0 6px; }
 .me-view blockquote { margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--border); color: var(--text-3, #777); }
 .me-view code { background: var(--hover, rgba(0, 0, 0, .06)); padding: 1px 5px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12px; }
 .me-view li { margin-left: 18px; }
-.me-foot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+.me-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.me-btn { color: #fff; background: var(--mc, #0ea5e9); border-color: var(--mc, #0ea5e9); font-weight: 600; padding: 5px 14px; }
+.me-btn:hover { color: #fff; background: color-mix(in srgb, var(--mc, #0ea5e9) 82%, #000); border-color: color-mix(in srgb, var(--mc, #0ea5e9) 82%, #000); }
+.me-btn:disabled { opacity: .55; }
+.me-btn:disabled:hover { background: var(--mc, #0ea5e9); border-color: var(--mc, #0ea5e9); }
 .me-hint { font-size: 11px; color: var(--text-3, #999); margin-left: auto; }
 
 /* ---------- 日历视图 ---------- */

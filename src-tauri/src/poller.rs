@@ -605,9 +605,12 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
 /// 直发让 dev 与安装版行为一致；失败时回退插件路径兜底并留痕。
 /// pub(crate)：commands::fire_snooze 复用。
 pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {
-    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
+    // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀。
+    // 注意类型必须是 Arc<AppState>：lib.rs manage 的就是这个类型，
+    // 写 state::<AppState>() 会因 TypeId 不匹配 panic（state() called before manage()），
+    // 且本函数在轮询任务内被同步调用 → panic 会带走整个轮询循环。
     {
-        let st = app.state::<AppState>();
+        let st = app.state::<Arc<AppState>>();
         let mut q = st.notify_urls.lock().unwrap();
         if q.len() >= 20 {
             q.pop_front();
@@ -643,7 +646,7 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
                     .on_activated(move |_| {
                         // 点击 toast：按标题反查 URL → 置前主窗并跳转（与插件 on_action tap 同语义）
                         let url = {
-                            let st = app_click.state::<AppState>();
+                            let st = app_click.state::<Arc<AppState>>();
                             let mut q = st.notify_urls.lock().unwrap();
                             match q.iter().rposition(|(t, _)| *t == title_click) {
                                 Some(i) => q.remove(i).unwrap().1,

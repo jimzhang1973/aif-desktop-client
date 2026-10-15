@@ -2001,18 +2001,21 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     const task = diskTransferStart("upload", `同步 ↑ ${r.subjectPath}${relDir ? "/" + relDir : ""}`, batch.length, {}, true);
     diskLog(`${logTag}：本→云上传 ${batch.length} 个文件${relDir ? `（${relDir}）` : ""}`, true);
     const ok = await runDiskJob("upload", () => api.diskUploadFiles(r.spaceId, subjectId, batch.map((b) => b.path)));
-    if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
-    else diskTransferFailStart(task.id, "同步上传未正常收尾");
     const st = diskTaskStats(task.id);
+    // 只要有一个文件上传失败且失败消息命中权限类错误 → 立即标注只读空间，终止本轮上传
     const denied = st.fail > 0 ? st.fails.find((f) => permDenied(f.msg)) : undefined;
-    if (st.ok === 0 && denied) {
-      // 整批无一成功且含权限类拒绝 → 只留首个作证据，其余并入「跳过」，终止本轮上传
+    if (denied) {
+      // 只留首个被拒文件作证据；同批其余（含后续未尝试）并入「跳过」；被拒批次不登记指纹，
+      // 下轮同步会重试首文件以探测权限是否恢复
       readOnly = true;
       entry.upFail += 1;
       entry.upFails.push({ name: "空间写入被服务端拒绝", msg: denied.msg });
-      roSkipped += batch.length - 1;
+      entry.upOk += st.ok; // 被拒之前已成功上传的文件照常计入
+      roSkipped += batch.length - st.ok - 1;
       continue;
     }
+    if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
+    else diskTransferFailStart(task.id, "同步上传未正常收尾");
     entry.upOk += st.ok;
     entry.upFail += st.fail;
     entry.upFails.push(...st.fails);

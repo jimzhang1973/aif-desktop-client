@@ -1690,6 +1690,7 @@ type SyncLogEntry = {
   upFail: number;
   upFails: SyncFailItem[];
   upSkip?: number; // 同名在线文档跳过数（非失败：本地有改动但云端为在线文档，登记指纹后不再重复提示）
+  upSkipBig?: number; // 超 100MB 单文件上限跳过数（非失败：直接拦截不尝试，登记指纹后不再重复提示）
   skippedNoDir: number; // 云端无同名目录被跳过的本地文件数
   errors: string[]; // 规则级错误（如目录树拉取失败）
 };
@@ -1990,6 +1991,12 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     // 本地目录名做云端合法性净化（非法字符替换为 _），分组与建目录均用净化后路径
     const relDir = rawRelDir ? rawRelDir.split("/").map(sanitizeDiskName).join("/") : "";
     if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改（含同名在线文档已登记）→ 静默跳过
+    if (f.size > DISK_MAX_UPLOAD_BYTES) {
+      // 超单文件 100MB 上限：直接拦截不尝试，登记指纹——文件不再改动不会每轮重复提示
+      entry.upSkipBig = (entry.upSkipBig || 0) + 1;
+      fp.up[key] = f.mtime;
+      continue;
+    }
     const cloud = cloudMap.get(key);
     if (cloud && cloud.subtype !== "FILE") {
       // 同名在线文档：不支持上传/替换。计为「跳过」而非失败，并登记指纹——
@@ -2106,6 +2113,7 @@ function diskSyncRender(): void {
             <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
             <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
             ${e.upSkip ? `<span class="sl-dim" title="云端存在同名在线文档，不支持上传/替换；已登记，文件不再改动不会重复提示">跳过（同名在线文档）${e.upSkip}</span>` : ""}
+            ${e.upSkipBig ? `<span class="sl-dim" title="超过单文件 100MB 上限，直接拦截不尝试上传；已登记，文件不再改动不会重复提示">跳过（超100MB）${e.upSkipBig}</span>` : ""}
             ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}
           </div>
           ${failList(e.dlFails)}${failList(e.upFails)}
@@ -2758,6 +2766,8 @@ type DiskEditingEnt = {
 const diskEditing = new Map<string, DiskEditingEnt>();
 
 const DISK_OFFICE_EXTS = ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "wps"];
+/** 单文件上传上限（与 Rust MAX_UPLOAD_BYTES 一致，B/S 限制） */
+const DISK_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 /** 小菜单按钮图标（stroke=currentColor，随配色着色） */
 const DFM_ICONS = {

@@ -2212,10 +2212,10 @@ pub fn close_webview_self(app: AppHandle, window: tauri::Window) {
 }
 
 /// [自愈] 主窗口丢失时按 tauri.conf.json 同款配置重建：
-/// 回默认小窗（432×640）、右下角、显示。修复「主窗被异常销毁后
+/// 回默认小窗（475×640）、右下角、显示。修复「主窗被异常销毁后
 /// layout/托盘全部失灵（主窗口不存在 / NOT FOUND）」后程序变砖的问题。
 /// 仅在 get_webview_window("main") 为 None 时才重建，正常路径零开销。
-/// [自愈] 主窗口丢失时按 tauri.conf.json 同款配置重建：小窗（432×640）、右下角、显示。
+/// [自愈] 主窗口丢失时按 tauri.conf.json 同款配置重建：小窗（475×640）、右下角、显示。
 ///
 /// 关键教训（tauri 2.12 源码实证）：绝不能用 get_webview_window("main") 判断主窗
 /// 是否存在——它内部有 is_webview_window() 过滤（窗口内一旦出现 label≠窗口名的
@@ -2938,7 +2938,7 @@ pub async fn layout_mini(app: AppHandle) -> Result<(), String> {
         None => {
             // 无记录（如首次直接 mini）：恢复默认弹窗尺寸并落到屏幕右下角
             let sf = win.scale_factor().unwrap_or(1.0);
-            let w = (432.0 * sf).round() as i32;
+            let w = (475.0 * sf).round() as i32; // 432 × 1.1 ≈ 475（2026-10-15 小窗加宽 10%）
             let h = (640.0 * sf).round() as i32;
             if let Some((l, t, r, b)) = work_area_of(&win) {
                 let x = (r - w - MINI_EDGE_MARGIN).max(l);

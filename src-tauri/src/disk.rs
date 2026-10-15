@@ -1492,3 +1492,13 @@ pub fn disk_edit_start(app: AppHandle, path: String, readonly: bool) -> Result<(
     });
     Ok(())
 }
+
+/// 本地建目录（含多级，幂等）：网盘同步「云→本地」方向，
+/// 为云端嵌套子目录（含空目录）在本地建立镜像。
+#[tauri::command]
+pub fn disk_local_mkdir(dir: String) -> Result<(), String> {
+    if dir.trim().is_empty() {
+        return Err("目录路径为空".into());
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())
+}

@@ -92,6 +92,7 @@
       "allow-disk-edit-start",
       "allow-disk-file-copy",
       "allow-disk-file-text",
+      "allow-disk-local-mkdir",
       "allow-disk-local-scan",
       "allow-disk-nodes",
       "allow-disk-personal-space-id",

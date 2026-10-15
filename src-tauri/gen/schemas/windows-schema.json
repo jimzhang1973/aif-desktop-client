@@ -285,6 +285,12 @@
           "markdownDescription": "Enables the disk_file_text command without any pre-configured scope."
         },
         {
+          "description": "Enables the disk_local_mkdir command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-local-mkdir",
+          "markdownDescription": "Enables the disk_local_mkdir command without any pre-configured scope."
+        },
+        {
           "description": "Enables the disk_local_scan command without any pre-configured scope.",
           "type": "string",
           "const": "allow-disk-local-scan",
@@ -751,6 +757,12 @@
           "type": "string",
           "const": "deny-disk-file-text",
           "markdownDescription": "Denies the disk_file_text command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_local_mkdir command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-local-mkdir",
+          "markdownDescription": "Denies the disk_local_mkdir command without any pre-configured scope."
         },
         {
           "description": "Denies the disk_local_scan command without any pre-configured scope.",

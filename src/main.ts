@@ -1598,7 +1598,8 @@ function syncFpPersist(fp: Record<string, SyncFp>): void {
   }
 }
 
-// ---------- 同步日志（24×7 常驻留痕，按入口分存，上限 300 条） ----------
+// ---------- 同步日志（7 天留痕，按入口分存；读取/写入时均做 7 天过期过滤） ----------
+const SYNC_LOG_TTL = 7 * 24 * 3600 * 1000;
 type SyncFailItem = { name: string; msg: string };
 type SyncLogEntry = {
   ts: number; // 作业时间
@@ -1619,7 +1620,9 @@ function syncLogStoreKey(): string {
 function syncLogLoad(): SyncLogEntry[] {
   try {
     const raw = JSON.parse(localStorage.getItem(syncLogStoreKey()) || "[]");
-    return Array.isArray(raw) ? (raw as SyncLogEntry[]) : [];
+    if (!Array.isArray(raw)) return [];
+    const floor = Date.now() - SYNC_LOG_TTL;
+    return (raw as SyncLogEntry[]).filter((e) => e && e.ts >= floor); // 过期条目读取时即剔除
   } catch {
     return [];
   }
@@ -1628,7 +1631,11 @@ function syncLogPush(e: SyncLogEntry): void {
   try {
     const logs = syncLogLoad();
     logs.unshift(e);
-    localStorage.setItem(syncLogStoreKey(), JSON.stringify(logs.slice(0, 300)));
+    const floor = Date.now() - SYNC_LOG_TTL;
+    localStorage.setItem(
+      syncLogStoreKey(),
+      JSON.stringify(logs.filter((x) => x.ts >= floor).slice(0, 300)),
+    );
   } catch {
     /* 忽略持久化失败 */
   }
@@ -1741,10 +1748,12 @@ async function diskSyncRun(): Promise<void> {
   }
 }
 
-/** 云端规则目录子树清单：FILE 文件（含相对路径）+ 目录映射（relDir→subjectId） */
+/** 云端规则目录子树清单：可下载文件（FILE 附件 + 在线文档，含相对路径与实际保存名）+ 目录映射。
+ *  在线文档只参与「云→本地」下载（按类型导出）；「本地→云」方向禁止上传/替换在线文档。 */
 function diskSyncCloudScan(tree: DiskNode[], subjectId: string): {
-  files: { node: DiskNode; relDir: string }[];
+  files: { node: DiskNode; relDir: string; subtype: string; name: string }[];
   dirs: Map<string, string>; // relDir(小写) → subjectId
+  dirRels: string[]; // 云端全部子目录（实际大小写相对路径，不含根）
 } {
   const byId = new Map(tree.map((n) => [n.id, n]));
   const childrenOf = new Map<string, DiskNode[]>();
@@ -1755,23 +1764,28 @@ function diskSyncCloudScan(tree: DiskNode[], subjectId: string): {
     arr.push(n);
     childrenOf.set(p, arr);
   }
-  const files: { node: DiskNode; relDir: string }[] = [];
+  const files: { node: DiskNode; relDir: string; subtype: string; name: string }[] = [];
+  const dirRels: string[] = [];
   const dirList: { id: string; relDir: string }[] = [{ id: subjectId, relDir: "" }];
   const walk = (id: string, rel: string) => {
     for (const c of childrenOf.get(id) || []) {
       if (c.nodeType === "subject") {
         const rrel = rel ? `${rel}/${c.name}` : c.name;
+        dirRels.push(rrel);
         dirList.push({ id: c.id, relDir: rrel });
         walk(c.id, rrel);
-      } else if (c.subtype === "FILE") {
-        // 在线文档（非 FILE）天然被排除：不支持同步
-        files.push({ node: c, relDir: rel });
+      } else {
+        const st = c.subtype;
+        // FILE 附件直下；在线文档仅收录可导出类型（DOC/MARKDOWN/EXCEL/RICHTEXT/COLLEXCEL）
+        if (st !== "FILE" && !DISK_SUBTYPE_EXT[st]) continue;
+        const name = st === "FILE" ? diskFileName(c) : diskFileDisplay(c).name;
+        files.push({ node: c, relDir: rel, subtype: st, name });
       }
     }
   };
   walk(subjectId, "");
   const dirs = new Map(dirList.map((d) => [d.relDir.toLowerCase(), d.id]));
-  return { files, dirs };
+  return { files, dirs, dirRels };
 }
 
 function syncLocalAbs(localDir: string, relPath: string): string {
@@ -1794,19 +1808,26 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     errors: [],
   };
   const tree = await api.diskTree(r.spaceId);
-  const { files, dirs } = diskSyncCloudScan(tree, r.subjectId);
+  const { files, dirs, dirRels } = diskSyncCloudScan(tree, r.subjectId);
   const fpAll = syncFpLoad();
   const fp: SyncFp = fpAll[r.id] || { up: {}, dl: {} };
   const logTag = `同步「${r.subjectPath}」`;
 
   // ---------- 云 → 本地 ----------
+  // 云端嵌套子目录（含空目录）在本地镜像建立（幂等，多级自动创建）
+  for (const rel of dirRels) {
+    try {
+      await api.diskLocalMkdir(syncLocalAbs(r.localDir, rel));
+    } catch {
+      /* 单个目录建立失败不阻塞（后续文件下载仍会 create_dir_all） */
+    }
+  }
   const locals0 = await api.diskLocalScan(r.localDir);
   const localMap = new Map(locals0.map((f) => [f.relPath.toLowerCase(), f]));
   const dlItems: DiskDlItem[] = [];
   const dlMarks: { rel: string; updateTime: number }[] = [];
-  for (const { node, relDir } of files) {
+  for (const { node, relDir, subtype, name } of files) {
     if (diskEditing.has(node.id)) continue; // 编辑中：同步跳过，避免与本地编辑回传抢写时序
-    const name = diskFileName(node);
     const rel = relDir ? `${relDir}/${name}` : name;
     const key = rel.toLowerCase();
     const local = localMap.get(key);
@@ -1816,7 +1837,7 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
       // 云端比本地新（且非本地上传的版本）→ 重新下载覆盖
       if (local.mtime * 1000 >= node.updateTime) continue;
     }
-    dlItems.push({ articleId: node.id, name, relDir, subtype: "FILE" });
+    dlItems.push({ articleId: node.id, name, relDir, subtype });
     dlMarks.push({ rel: key, updateTime: node.updateTime });
   }
   if (dlItems.length) {
@@ -1833,31 +1854,87 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
 
   // ---------- 本地 → 云 ----------
   const locals = await api.diskLocalScan(r.localDir);
-  const cloudMap = new Map(files.map(({ node, relDir }) => {
-    const name = diskFileName(node);
-    return [(relDir ? `${relDir}/${name}` : name).toLowerCase(), node];
-  }));
+  // 同名登记：FILE 用真实文件名；在线文档同时登记「带导出后缀名」与「原始名」，
+  // 命中在线文档的一律禁止上传/替换（在线文档只下载，云端只能在线上创建和编辑）
+  const cloudMap = new Map<string, DiskNode>();
+  for (const { node, relDir, name } of files) {
+    const rel = relDir ? `${relDir}/${name}` : name;
+    cloudMap.set(rel.toLowerCase(), node);
+    if (node.subtype !== "FILE") {
+      const raw = relDir ? `${relDir}/${sanitizeDiskName(node.name)}` : sanitizeDiskName(node.name);
+      cloudMap.set(raw.toLowerCase(), node);
+    }
+  }
+  // 云端目录映射副本（含同步过程中新建的目录）：relDir(小写) → subjectId
+  const ensuredDirs = new Map(dirs);
+  let createdDirs = 0;
+  const dirErrors: string[] = [];
+  /** 逐级确保云端目录存在（已存在直接命中；缺失逐级创建，命中失败返回 null） */
+  const ensureCloudDir = async (segments: string[]): Promise<string | null> => {
+    let rel = "";
+    let parentId = r.subjectId;
+    for (const seg of segments) {
+      const nm = sanitizeDiskName(seg);
+      rel = rel ? `${rel}/${nm}` : nm;
+      const k = rel.toLowerCase();
+      const known = ensuredDirs.get(k);
+      if (known) {
+        parentId = known;
+        continue;
+      }
+      try {
+        const res = await api.diskCreateDir(r.spaceId, parentId, nm);
+        if (!res.ok || !res.id) {
+          dirErrors.push(`云端目录「${rel}」创建失败：${res.msg || "未知错误"}`);
+          return null;
+        }
+        createdDirs++;
+        ensuredDirs.set(k, res.id);
+        parentId = res.id;
+      } catch (e) {
+        dirErrors.push(`云端目录「${rel}」创建失败：${String(e).replace(/^"|"$/g, "")}`);
+        return null;
+      }
+    }
+    return parentId;
+  };
   const upByDir = new Map<string, { path: string; rel: string; mtime: number }[]>();
   let skippedNoDir = 0;
   for (const f of locals) {
     const key = f.relPath.toLowerCase();
-    const relDir = f.relPath.includes("/") ? f.relPath.slice(0, f.relPath.lastIndexOf("/")) : "";
-    // 云端无对应目录（本地子目录云端不存在）→ 跳过（不自动建目录）
-    if (!dirs.has(relDir.toLowerCase())) {
-      skippedNoDir++;
+    const rawRelDir = f.relPath.includes("/") ? f.relPath.slice(0, f.relPath.lastIndexOf("/")) : "";
+    // 本地目录名做云端合法性净化（非法字符替换为 _），分组与建目录均用净化后路径
+    const relDir = rawRelDir ? rawRelDir.split("/").map(sanitizeDiskName).join("/") : "";
+    const cloud = cloudMap.get(key);
+    if (cloud && cloud.subtype !== "FILE") {
+      // 同名在线文档：仅下载方向存在，本地上传/替换被禁止
+      entry.upFails.push({ name: f.relPath, msg: "同名在线文档，不支持上传/替换" });
+      entry.upFail++;
       continue;
-    }    const cloud = cloudMap.get(key);
+    }
     if (cloud && diskEditing.has(cloud.id)) continue; // 该云端文件正被本地编辑：跳过
     if (cloud) {
       if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改
       if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新
+    }
+    if (!relDir) {
+      // 根级文件直接归属规则目录
+      const arr = upByDir.get("") || [];
+      arr.push({ path: syncLocalAbs(r.localDir, f.relPath), rel: key, mtime: f.mtime });
+      upByDir.set("", arr);
+      continue;
+    }
+    const subjectId = ensuredDirs.get(relDir.toLowerCase()) ?? (await ensureCloudDir(relDir.split("/")));
+    if (!subjectId) {
+      skippedNoDir++; // 云端目录创建失败 → 该文件本轮跳过
+      continue;
     }
     const arr = upByDir.get(relDir) || [];
     arr.push({ path: syncLocalAbs(r.localDir, f.relPath), rel: key, mtime: f.mtime });
     upByDir.set(relDir, arr);
   }
   for (const [relDir, batch] of upByDir) {
-    const subjectId = dirs.get(relDir.toLowerCase())!;
+    const subjectId = relDir ? ensuredDirs.get(relDir.toLowerCase())! : r.subjectId;
     const task = diskTransferStart("upload", `同步 ↑ ${r.subjectPath}${relDir ? "/" + relDir : ""}`, batch.length, {});
     diskLog(`${logTag}：本→云上传 ${batch.length} 个文件${relDir ? `（${relDir}）` : ""}`, true);
     const ok = await runDiskJob("upload", () => api.diskUploadFiles(r.spaceId, subjectId, batch.map((b) => b.path)));
@@ -1868,8 +1945,10 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     entry.upFail += st.fail;
     entry.upFails.push(...st.fails);
   }
+  if (createdDirs) diskLog(`${logTag}：云端新建目录 ${createdDirs} 个`, true);
+  if (dirErrors.length) entry.errors.push(...dirErrors);
   entry.skippedNoDir = skippedNoDir;
-  if (skippedNoDir) diskLog(`${logTag}：${skippedNoDir} 个本地子目录文件跳过（云端无同名目录）`, false);
+  if (skippedNoDir) diskLog(`${logTag}：${skippedNoDir} 个本地文件跳过（云端目录创建失败）`, false);
 
   fpAll[r.id] = fp;
   syncFpPersist(fpAll);
@@ -1889,11 +1968,11 @@ function syncFmtTime(ts: number): string {
 function diskSyncRender(): void {
   const body = document.getElementById("disk-sync-body");
   if (!body || !syncCfg) return;
-  // 页签：同步配置 / 同步日志（24×7）
+  // 页签：同步配置 / 同步日志（7 天）
   const tabs = `
     <div class="sync-tabs">
       <button class="sync-tab${syncTab === "cfg" ? " on" : ""}" data-tab="cfg">同步配置</button>
-      <button class="sync-tab${syncTab === "log" ? " on" : ""}" data-tab="log">同步日志（24×7）</button>
+      <button class="sync-tab${syncTab === "log" ? " on" : ""}" data-tab="log">同步日志（7天）</button>
     </div>`;
   if (syncTab === "log") {
     const logs = syncLogLoad();
@@ -1905,7 +1984,7 @@ function diskSyncRender(): void {
         : "";
     body.innerHTML =
       tabs +
-      `<div class="sync-sec"><span class="sr-cap">同步日志（${logs.length}）</span><button class="disk-btn ghost" id="sync-log-clear">清空</button></div>
+      `<div class="sync-sec"><span class="sr-cap">同步日志 · 近7天（${logs.length}）</span><button class="disk-btn ghost" id="sync-log-clear">清空</button></div>
       <div class="sync-rules">${logs
         .map(
           (e) => `
@@ -1915,7 +1994,7 @@ function diskSyncRender(): void {
           <div class="sl-stats">
             <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
             <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
-            ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端无目录）${e.skippedNoDir}</span>` : ""}
+            ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}
           </div>
           ${failList(e.dlFails)}${failList(e.upFails)}
           ${e.errors.length ? `<div class="sl-fails">${e.errors.map((m) => `<div class="sl-fail">✗ ${esc(m)}</div>`).join("")}</div>` : ""}
@@ -1954,8 +2033,8 @@ function diskSyncRender(): void {
           : "暂无启用的规则")
       : "网盘同步暂停";
   body.innerHTML = tabs + `
-    <div class="sync-warn" title="在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL 等）不支持同步，仅同步普通附件文件（FILE）">
-      <span class="sw-ico">⚠</span>仅同步网盘文件，在线文档不支持同步，在线文档可通过在线查看导出
+    <div class="sync-warn" title="在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL 等）仅参与「云→本地」下载（按类型导出），不支持上传创建/替换">
+      <span class="sw-ico">⚠</span>仅同步网盘文件，在线文档只支持下载，在线文档可在线上创建和编辑
     </div>
     <div class="sync-row">
       <label class="switch">
@@ -2301,13 +2380,20 @@ async function renderDisk(content: HTMLElement) {
 async function diskSyncBindSelected(): Promise<void> {
   if (!syncCfg) diskSyncArm();
   if (!syncCfg) return;
-  // 只允许当前层级勾选一个目录：级联勾进来的下级目录/文件不算（其父级已被勾选）
+  // 只允许当前层级勾选一个目录：级联勾进来的下级目录/文件不算（其父级已被勾选）；
+  // 跨目录勾选（如 A 目录 + B 目录的子目录）一律拒绝——即使父链缺失也要能识别
   const checkedDirs = [...diskSt.checked]
     .map((id) => diskSt.flat.get(id))
     .filter((n): n is DiskNode => !!n && n.nodeType === "subject");
   const topDirs = checkedDirs.filter((n) => !diskSt.checked.has(diskParentId(n)));
-  if (topDirs.length !== 1) return toast("请在当前层级只勾选一个目录");
+  if (topDirs.length > 1) return toast("跨目录勾选：请只保留一个目录的勾选（不同目录及其子目录不可同时勾选）");
+  if (topDirs.length === 0) return toast("请在当前层级只勾选一个目录");
   const node = topDirs[0];
+  // 兜底校验：任何位于该目录子树之外的勾选目录（父链异常导致的漏排除）同样拒绝
+  const underIds = new Set(diskCollectUnder(node.id).map((k) => k.id));
+  if (checkedDirs.some((n) => n.id !== node.id && !underIds.has(n.id))) {
+    return toast("跨目录勾选：请先取消其他目录的勾选");
+  }
   let localDir = "";
   try {
     localDir = await diskPickDir();
@@ -4273,9 +4359,12 @@ function renderDocList() {
 
 // ---------------- 空间 Tab（空间列表：我的收藏等分类） ----------------
 let spaceSection = "starred";
-// 搜索关键字（本地过滤名称/单位/说明）；拉取结果缓存，输入时不重新请求
+// 搜索关键字（本地过滤名称/单位/说明）；拉取结果缓存，输入时不重新请求、焦点不丢
 let spaceSearch = "";
 let spacesCache: SpaceRow[] = [];
+// 分类折叠状态（分类名 → 折叠）；spaceGroupsCache 为最近一次分节渲染的分类名清单
+const spaceCollapsed = new Set<string>();
+let spaceGroupsCache: string[] = [];
 
 function renderSpaces(content: HTMLElement) {
   content.innerHTML =
@@ -4284,20 +4373,36 @@ function renderSpaces(content: HTMLElement) {
     <div class="type-chips" id="space-tabs">
       <button class="type-chip${spaceSection === "starred" ? " active" : ""}" data-sec="starred">我的收藏</button>
       <button class="type-chip${spaceSection === "all" ? " active" : ""}" data-sec="all">全部空间</button>
+      <span class="tb-spacer"></span>
+      <button class="type-chip plain" id="space-fold" title="折叠全部分类（仅全部空间、无搜索时可用）">折叠</button>
+      <button class="type-chip plain" id="space-expand" title="展开全部分类">展开</button>
     </div>
     <div class="list" id="list">${skels()}</div>`;
   document.getElementById("search-space")!.addEventListener("input", debounce((e: Event) => {
     spaceSearch = (e.target as HTMLInputElement).value.trim();
     renderSpaceList();
   }, 300));
-  content.querySelectorAll("#space-tabs .type-chip").forEach((b) =>
+  content.querySelectorAll<HTMLElement>("#space-tabs .type-chip[data-sec]").forEach((b) =>
     b.addEventListener("click", () => {
-      spaceSection = (b as HTMLElement).dataset.sec!;
-      content.querySelectorAll("#space-tabs .type-chip").forEach((x) => x.classList.remove("active"));
+      spaceSection = b.dataset.sec!;
+      content.querySelectorAll("#space-tabs .type-chip[data-sec]").forEach((x) => x.classList.remove("active"));
       b.classList.add("active");
       void loadSpaceList();
     }),
   );
+  // 分类折叠/展开（仅「全部空间」且无搜索时分节展示，其他视图给提示）
+  const foldAll = () => {
+    if (spaceSection !== "all" || spaceSearch) return toast("仅「全部空间」且无搜索时支持按分类折叠");
+    for (const g of spaceGroupsCache) spaceCollapsed.add(g);
+    renderSpaceList();
+  };
+  const expandAll = () => {
+    if (spaceSection !== "all" || spaceSearch) return toast("仅「全部空间」且无搜索时支持按分类展开");
+    spaceCollapsed.clear();
+    renderSpaceList();
+  };
+  document.getElementById("space-fold")!.addEventListener("click", foldAll);
+  document.getElementById("space-expand")!.addEventListener("click", expandAll);
   void loadSpaceList();
 }
 
@@ -4383,7 +4488,8 @@ function renderSpaceList() {
         </div>
       </div>`;
   };
-  // 全部空间 + 无关键字 → 按分类分节（保持接口出现顺序，未分类排最后）
+  // 全部空间 + 无关键字 → 按分类分节（保持接口出现顺序，未分类排最后）；
+  // 分类标题行可点击折叠/展开，右上「折叠/展开」按钮批量操作
   if (spaceSection === "all" && !kw) {
     const groups: { name: string; rows: SpaceRow[] }[] = [];
     for (const s of spaces) {
@@ -4396,20 +4502,31 @@ function renderSpaceList() {
       bucket.rows.push(s);
     }
     groups.sort((a, b) => (a.name === "未分类" ? 1 : b.name === "未分类" ? -1 : 0));
+    spaceGroupsCache = groups.map((g) => g.name);
     list.innerHTML = groups
       .map(
         (g, gi) => {
           const c = g.name === "未分类" ? "#94a3b8" : CAT_COLORS[gi % CAT_COLORS.length];
+          const folded = spaceCollapsed.has(g.name);
           return (
-            `<div class="space-group">${esc(g.name)}<span class="sg-count" style="color:${c};background:${c}1f;border:1px solid ${c}44">${g.rows.length}</span></div>` +
-            g.rows.map(card).join("")
+            `<div class="space-group toggle" data-cat="${esc(g.name)}" title="${folded ? "展开" : "折叠"}该分类">${folded ? "▸" : "▾"} ${esc(g.name)}<span class="sg-count" style="color:${c};background:${c}1f;border:1px solid ${c}44">${g.rows.length}</span></div>` +
+            (folded ? "" : g.rows.map(card).join(""))
           );
         },
       )
       .join("");
   } else {
+    spaceGroupsCache = [];
     list.innerHTML = spaces.map(card).join("");
   }
+  list.querySelectorAll<HTMLElement>(".space-group.toggle").forEach((h) =>
+    h.addEventListener("click", () => {
+      const cat = h.dataset.cat!;
+      if (spaceCollapsed.has(cat)) spaceCollapsed.delete(cat);
+      else spaceCollapsed.add(cat);
+      renderSpaceList();
+    }),
+  );
   list.querySelectorAll(".list-item").forEach((item) =>
     item.addEventListener("click", () => {
       const url = (item as HTMLElement).dataset.url;

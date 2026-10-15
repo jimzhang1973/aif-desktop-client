@@ -1272,3 +1272,9 @@ input:focus, select:focus { border-color: var(--accent); }
 .cal-hm { flex: none; font-size: 11.5px; color: var(--text-3, #999); font-variant-numeric: tabular-nums; }
 .cal-title2 { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-sender { flex: none; font-size: 11.5px; color: var(--text-3, #999); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 空间分类折叠：标题行可点击；「全部空间」行右侧的展开/折叠按钮随普通 chip 样式 */
+.space-group.toggle { cursor: pointer; user-select: none; }
+.space-group.toggle:hover { filter: brightness(.96); }
+.dark .space-group.toggle:hover { filter: brightness(1.15); }
+.type-chip.plain { background: transparent; border: 1px dashed var(--border); color: var(--text-3, #888); }

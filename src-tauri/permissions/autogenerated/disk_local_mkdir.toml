@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-disk-local-mkdir"
+description = "Enables the disk_local_mkdir command without any pre-configured scope."
+commands.allow = ["disk_local_mkdir"]
+
+[[permission]]
+identifier = "deny-disk-local-mkdir"
+description = "Denies the disk_local_mkdir command without any pre-configured scope."
+commands.deny = ["disk_local_mkdir"]

@@ -574,6 +574,25 @@ struct UploadResp {
     mime_type: String,
 }
 
+/// 上传类型白名单（小写后缀；不在名单内的文件在上传前即拦截，不再发起请求）。
+/// 注意：按用户给定清单收录，其中 "xt" 疑似 "txt" 之误，已同时放行 "txt"。
+const UPLOAD_EXT_WHITELIST: &[&str] = &[
+    "xt", "txt", "mp4", "png", "jpg", "jpeg", "gif", "doc", "docx", "wps", "wpt", "xls", "xlsx",
+    "ppt", "pptx", "pdf", "zip", "rar", "7z", "json", "xml", "guac", "picture", "emf", "x-wmf",
+    "none", "svg", "sh", "gz", "tar.gz", "md", "mdj", "html",
+];
+
+fn upload_ext_allowed(fname: &str) -> bool {
+    let lower = fname.to_lowercase();
+    if lower.ends_with(".tar.gz") {
+        return true; // 双段后缀优先判定
+    }
+    match lower.rsplit('.').next() {
+        Some(ext) => UPLOAD_EXT_WHITELIST.contains(&ext),
+        None => false, // 无后缀 → 拦截
+    }
+}
+
 /// 批量上传本地文件到指定空间/目录（两阶段：先传文件再落库，20 个/批）。
 /// 同名处理：目标目录下已存在同名 FILE 型附件时走 fileReplace（保文章 id 替换文件），
 /// 否则按新建 fileSave 落库——不产生重复附件。
@@ -635,6 +654,10 @@ pub fn disk_upload_files(
             };
             if fname.is_empty() || !path.is_file() {
                 let _ = app.emit("disk-progress", fail("文件不存在".into()));
+                continue;
+            }
+            if !upload_ext_allowed(&fname) {
+                let _ = app.emit("disk-progress", fail("非白名单类型，已拦截".into()));
                 continue;
             }
             if let Ok(meta) = std::fs::metadata(&path) {

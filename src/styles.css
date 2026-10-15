@@ -1079,6 +1079,7 @@ input:focus, select:focus { border-color: var(--accent); }
 /* 工具条（第一行）+ 空间选择行（第二行）：工具栏位于下拉菜单上面 */
 .disk-bar { display: flex; align-items: center; gap: 2px; padding: 8px 10px 4px; }
 .disk-spacerow { display: flex; align-items: center; gap: 8px; padding: 4px 10px 8px; border-bottom: 1px solid var(--border); }
+.disk-spacerow .disk-select { margin: 0; width: 260px; flex: none; }
 .db-ico { font-weight: 700; margin-right: 2px; }
 .db-ico.up { color: #10b981; }
 .db-ico.down { color: #3b82f6; }
@@ -1088,16 +1089,6 @@ input:focus, select:focus { border-color: var(--accent); }
 .dd { position: relative; flex: none; }
 .dd .disk-select { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0; width: 120px; text-align: left; cursor: pointer; }
 #disk-space-cur { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dd-caret { color: var(--text-3, #94a3b8); font-size: 10px; flex: none; }
-.dd-panel { position: absolute; top: calc(100% + 4px); left: 0; width: 248px; max-height: 340px; background: var(--bg, #fff); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); z-index: 70; display: flex; flex-direction: column; overflow: hidden; }
-.dark .dd-panel { background: var(--bg, #1e1e1e); }
-.dd-filter { margin: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; background: transparent; color: inherit; outline: none; }
-.dd-filter:focus { border-color: #0ea5e9; }
-.dd-list { overflow: auto; padding: 2px 6px 8px; }
-.dd-cat { display: inline-block; margin: 8px 4px 2px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 18px; }
-.dd-opt { padding: 6px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dd-opt:hover { background: var(--hover, rgba(0, 0, 0, .06)); }
-.dd-opt.on { background: rgba(14, 165, 233, .12); color: #0284c7; font-weight: 600; }
 .dd-empty { padding: 14px 10px; font-size: 12px; color: var(--text-3, #999); text-align: center; }
 .disk-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1, #fff); font-size: 12.5px; cursor: pointer; color: inherit; white-space: nowrap; }
 .disk-btn:hover { border-color: #0ea5e9; color: #0284c7; }
@@ -1153,7 +1144,23 @@ input:focus, select:focus { border-color: var(--accent); }
 .sr-btns .disk-btn { padding: 2px 8px; font-size: 11.5px; }
 .sr-del:hover { color: #dc2626; border-color: #fca5a5; }
 .sync-foot { padding: 8px 2px 2px; font-size: 11.5px; color: var(--text-3, #999); }
+/* 同步抽屉页签（配置 / 日志） */
+.sync-tabs { display: flex; gap: 6px; padding: 2px 2px 8px; }
+.sync-tab { flex: 1; padding: 6px 0; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-3, #666); font-size: 12.5px; cursor: pointer; }
+.sync-tab.on { background: rgba(14, 165, 233, .12); color: #0284c7; border-color: rgba(14, 165, 233, .4); font-weight: 600; }
+/* 同步日志条目 */
+.sl-head { display: flex; align-items: center; gap: 8px; }
+.sl-time { font-size: 11.5px; color: var(--text-3, #999); flex: none; }
+.sl-stats { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.sl-ok { color: #059669; }
+.sl-bad { color: #dc2626; font-weight: 600; }
+.sl-dim { color: var(--text-3, #999); }
+.sl-fails { display: flex; flex-direction: column; gap: 2px; }
+.sl-fail { font-size: 11.5px; color: #dc2626; word-break: break-all; user-select: text; }
 /* 云端目录选择器（覆盖在同步抽屉内） */
+/* [hidden] 属性会被下方 display:flex 覆盖，必须显式关掉：否则云端目录选择器
+   浮层常驻盖住整个同步抽屉（顶部空下拉/警示条/开关/频率全部不可见的根因） */
+.sync-picker[hidden] { display: none; }
 .sync-picker { position: absolute; left: 0; right: 0; top: 42px; bottom: 0; background: var(--bg, #fff); z-index: 5; display: flex; flex-direction: column; }
 .dark .sync-picker { background: var(--bg, #1e1e1e); }
 .sp-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }

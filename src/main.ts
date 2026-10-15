@@ -1313,7 +1313,8 @@ void on<string[]>("disk-upload-request", (paths) => {
 //   双方都不删除文件（绝不因同步丢数据）。
 // - 同步指纹（按入口持久化）：dl[相对路径]=云端 updateTime（上次下载时的云端版本）、
 //   up[相对路径]=本地上传时的文件 mtime（「本地最后一次上传时间」）。命中指纹即跳过，减少重复传输。
-// - 后台节拍：前端 30s tick；nextRunAt = 上次完成时间 + 频率（最小 5 分钟）。
+// - 后台节拍：前端每 1 分钟 tick，且仅在 5 的整数倍分钟判定；
+//   nextRunAt = 上次完成时间 + 频率（最小 5 分钟）。
 //   作业单飞：上一次未结束时本次自动跳过，结束后按节拍继续。
 
 /** 彩色分类固定色板（空间 Tab 胶囊 / 下拉分类头共用，按名称稳定取色） */
@@ -1355,6 +1356,7 @@ let syncPickRuleId = ""; // 云端目录选择器当前服务的规则 id（空=
 let syncPickSpaceId = "";
 let syncPickNodes: DiskNode[] | null = null;
 let syncEditing = ""; // 正在编辑的规则 id（空=列表态）
+let syncTab: "cfg" | "log" = "cfg"; // 同步抽屉当前页签
 
 const SYNC_FREQS = [5, 15, 30, 60];
 
@@ -1402,6 +1404,60 @@ function syncFpPersist(fp: Record<string, SyncFp>): void {
   }
 }
 
+// ---------- 同步日志（24×7 常驻留痕，按入口分存，上限 300 条） ----------
+type SyncFailItem = { name: string; msg: string };
+type SyncLogEntry = {
+  ts: number; // 作业时间
+  rule: string; // 同步目录（网盘侧路径）
+  localDir: string; // 本地目录
+  dlOk: number;
+  dlFail: number;
+  dlFails: SyncFailItem[]; // 失败文件名 + 原因
+  upOk: number;
+  upFail: number;
+  upFails: SyncFailItem[];
+  skippedNoDir: number; // 云端无同名目录被跳过的本地文件数
+  errors: string[]; // 规则级错误（如目录树拉取失败）
+};
+function syncLogStoreKey(): string {
+  return `aif_disk_sync_logs__${diskCurEntryKey || entryKey()}`;
+}
+function syncLogLoad(): SyncLogEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(syncLogStoreKey()) || "[]");
+    return Array.isArray(raw) ? (raw as SyncLogEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+function syncLogPush(e: SyncLogEntry): void {
+  try {
+    const logs = syncLogLoad();
+    logs.unshift(e);
+    localStorage.setItem(syncLogStoreKey(), JSON.stringify(logs.slice(0, 300)));
+  } catch {
+    /* 忽略持久化失败 */
+  }
+}
+function syncLogClear(): void {
+  try {
+    localStorage.removeItem(syncLogStoreKey());
+  } catch {
+    /* 忽略 */
+  }
+}
+/** 从传输任务读取逐文件统计（含白名单拦截/启动失败等项） */
+function diskTaskStats(taskId: string): { ok: number; fail: number; fails: SyncFailItem[] } {
+  const t = diskTransfers.find((x) => x.id === taskId);
+  if (!t) return { ok: 0, fail: 0, fails: [] };
+  const fails = t.items.filter((i) => !i.ok);
+  return {
+    ok: t.items.length - fails.length,
+    fail: fails.length,
+    fails: fails.map((i) => ({ name: i.name, msg: i.msg || "" })),
+  };
+}
+
 /** 登录/切入口后装载本入口同步配置，并求「第一个可执行时间点」：
  *  从未跑过 → 立即可执行；跑过 → 上次完成 + 频率（早已过期同样立即）。 */
 function diskSyncArm(): void {
@@ -1418,10 +1474,12 @@ function diskSyncRefreshDot(): void {
   if (dot) dot.hidden = !(syncCfg?.enabled && syncCfg.rules.some((r) => r.enabled && r.subjectId && r.localDir));
 }
 
-/** 后台节拍：30s tick（频率本身 ≥5 分钟，实际执行间隔由 nextRunAt 把关） */
+/** 后台节拍：每 1 分钟检查一次；未到 5 的整数倍分钟继续等待，
+ *  到点后再判频率条件（nextRunAt = 上次完成 + 频率）。作业单飞：未结束自动跳过 */
 function diskSyncTick(): void {
   if (!syncCfg || !syncCfg.enabled || syncBusy) return; // 作业未结束 → 下一次自动取消
   if (!syncCfg.rules.some((r) => r.enabled && r.localDir && r.subjectId)) return;
+  if (new Date().getMinutes() % 5 !== 0) return; // 未到 5 的整数倍分钟 → 继续等待
   if (Date.now() < syncNextRunAt) return;
   void diskSyncRun();
 }
@@ -1460,9 +1518,23 @@ async function diskSyncRun(): Promise<void> {
   try {
     for (const r of rules) {
       try {
-        await diskSyncRule(r);
+        syncLogPush(await diskSyncRule(r));
       } catch (e) {
-        diskLog(`同步 ✗ 「${r.subjectPath}」：${String(e).replace(/^"|"$/g, "")}`, false);
+        const msg = String(e).replace(/^"|"$/g, "");
+        diskLog(`同步 ✗ 「${r.subjectPath}」：${msg}`, false);
+        syncLogPush({
+          ts: Date.now(),
+          rule: r.subjectPath,
+          localDir: r.localDir,
+          dlOk: 0,
+          dlFail: 0,
+          dlFails: [],
+          upOk: 0,
+          upFail: 0,
+          upFails: [],
+          skippedNoDir: 0,
+          errors: [msg],
+        });
       }
     }
   } finally {
@@ -1512,8 +1584,21 @@ function syncLocalAbs(localDir: string, relPath: string): string {
   return `${localDir.replace(/[\\/]+$/, "")}\\${relPath.replace(/\//g, "\\")}`;
 }
 
-/** 执行单条规则的同步：云→本地下传 + 本地→云上传（指纹去重，均不删除） */
-async function diskSyncRule(r: SyncRule): Promise<void> {
+/** 执行单条规则的同步：云→本地下传 + 本地→云上传（指纹去重，均不删除）；返回本规则日志条目 */
+async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
+  const entry: SyncLogEntry = {
+    ts: Date.now(),
+    rule: r.subjectPath,
+    localDir: r.localDir,
+    dlOk: 0,
+    dlFail: 0,
+    dlFails: [],
+    upOk: 0,
+    upFail: 0,
+    upFails: [],
+    skippedNoDir: 0,
+    errors: [],
+  };
   const tree = await api.diskTree(r.spaceId);
   const { files, dirs } = diskSyncCloudScan(tree, r.subjectId);
   const fpAll = syncFpLoad();
@@ -1545,6 +1630,10 @@ async function diskSyncRule(r: SyncRule): Promise<void> {
     const ok = await runDiskJob("download", () => api.diskDownloadFiles(dlItems, r.localDir, true));
     if (ok) for (const m of dlMarks) fp.dl[m.rel] = m.updateTime;
     else diskTransferFailStart(task.id, "同步下载未正常收尾");
+    const st = diskTaskStats(task.id);
+    entry.dlOk = st.ok;
+    entry.dlFail = st.fail;
+    entry.dlFails = st.fails;
   }
 
   // ---------- 本地 → 云 ----------
@@ -1562,8 +1651,7 @@ async function diskSyncRule(r: SyncRule): Promise<void> {
     if (!dirs.has(relDir.toLowerCase())) {
       skippedNoDir++;
       continue;
-    }
-    const cloud = cloudMap.get(key);
+    }    const cloud = cloudMap.get(key);
     if (cloud) {
       if ((fp.up[key] || 0) === f.mtime) continue; // 指纹命中：上传后本地未改
       if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新
@@ -1579,12 +1667,18 @@ async function diskSyncRule(r: SyncRule): Promise<void> {
     const ok = await runDiskJob("upload", () => api.diskUploadFiles(r.spaceId, subjectId, batch.map((b) => b.path)));
     if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
     else diskTransferFailStart(task.id, "同步上传未正常收尾");
+    const st = diskTaskStats(task.id);
+    entry.upOk += st.ok;
+    entry.upFail += st.fail;
+    entry.upFails.push(...st.fails);
   }
+  entry.skippedNoDir = skippedNoDir;
   if (skippedNoDir) diskLog(`${logTag}：${skippedNoDir} 个本地子目录文件跳过（云端无同名目录）`, false);
 
   fpAll[r.id] = fp;
   syncFpPersist(fpAll);
   if (!dlItems.length && !upByDir.size) diskLog(`${logTag}：无变更`, true);
+  return entry;
 }
 
 // ---------- 网盘同步配置页（抽屉） ----------
@@ -1599,6 +1693,51 @@ function syncFmtTime(ts: number): string {
 function diskSyncRender(): void {
   const body = document.getElementById("disk-sync-body");
   if (!body || !syncCfg) return;
+  // 页签：同步配置 / 同步日志（24×7）
+  const tabs = `
+    <div class="sync-tabs">
+      <button class="sync-tab${syncTab === "cfg" ? " on" : ""}" data-tab="cfg">同步配置</button>
+      <button class="sync-tab${syncTab === "log" ? " on" : ""}" data-tab="log">同步日志（24×7）</button>
+    </div>`;
+  if (syncTab === "log") {
+    const logs = syncLogLoad();
+    const failList = (items: SyncFailItem[]) =>
+      items.length
+        ? `<div class="sl-fails">${items
+            .map((f) => `<div class="sl-fail" title="${esc(f.msg)}">✗ ${esc(f.name)}${f.msg ? `：${esc(f.msg)}` : ""}</div>`)
+            .join("")}</div>`
+        : "";
+    body.innerHTML =
+      tabs +
+      `<div class="sync-sec"><span class="sr-cap">同步日志（${logs.length}）</span><button class="disk-btn ghost" id="sync-log-clear">清空</button></div>
+      <div class="sync-rules">${logs
+        .map(
+          (e) => `
+        <div class="sync-rule">
+          <div class="sl-head"><span class="sl-time">${syncFmtTime(e.ts)}</span><span class="sr-path" title="${esc(e.rule)}">☁ ${esc(e.rule)}</span></div>
+          <div class="sr-line sr-local" title="${esc(e.localDir)}">📁 ${esc(e.localDir || "—")}</div>
+          <div class="sl-stats">
+            <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
+            <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
+            ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端无目录）${e.skippedNoDir}</span>` : ""}
+          </div>
+          ${failList(e.dlFails)}${failList(e.upFails)}
+          ${e.errors.length ? `<div class="sl-fails">${e.errors.map((m) => `<div class="sl-fail">✗ ${esc(m)}</div>`).join("")}</div>` : ""}
+        </div>`,
+        )
+        .join("") || `<div class="dd-empty">暂无同步记录：开启同步后，每次作业的时间、同步目录、成功/失败统计、失败文件名与原因都会在此留痕</div>`}</div>`;
+    body.querySelector("#sync-log-clear")!.addEventListener("click", () => {
+      syncLogClear();
+      diskSyncRender();
+    });
+    body.querySelectorAll<HTMLButtonElement>(".sync-tab").forEach((b) =>
+      b.addEventListener("click", () => {
+        syncTab = (b.dataset.tab as "cfg" | "log") || "cfg";
+        diskSyncRender();
+      }),
+    );
+    return;
+  }
   const ruleCard = (r: SyncRule) => `
     <div class="sync-rule${r.enabled ? " on" : ""}" data-id="${esc(r.id)}">
       <div class="sr-line">
@@ -1619,7 +1758,7 @@ function diskSyncRender(): void {
           ? `下次同步 ${syncFmtTime(syncNextRunAt || Date.now())}`
           : "暂无启用的规则")
       : "已关闭";
-  body.innerHTML = `
+  body.innerHTML = tabs + `
     <div class="sync-warn" title="在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL 等）不支持同步，仅同步普通附件文件（FILE）">
       <span class="sw-ico">⚠</span>在线文档不支持同步：仅同步普通附件文件（FILE 型），请将在线文档内容在 B/S 内自行导出
     </div>
@@ -1718,6 +1857,12 @@ function diskSyncRender(): void {
     syncPickNodes = null;
     syncPickSpaceId = "";
   }
+  body.querySelectorAll<HTMLButtonElement>(".sync-tab").forEach((b) =>
+    b.addEventListener("click", () => {
+      syncTab = (b.dataset.tab as "cfg" | "log") || "cfg";
+      diskSyncRender();
+    }),
+  );
 }
 
 /** 配置页规则行动作：选本地目录 / 选网盘目录 / 删除 */
@@ -1837,13 +1982,7 @@ async function renderDisk(content: HTMLElement) {
         <button class="disk-btn ghost" id="disk-transfer" title="传输日志">⇅ 传输日志<span class="badge" id="disk-transfer-badge"></span></button>
       </div>
       <div class="disk-spacerow">
-        <div class="dd" id="disk-dd">
-          <button class="disk-select" id="disk-space-btn" title="选择空间"><span id="disk-space-cur">…</span><span class="dd-caret">▾</span></button>
-          <div class="dd-panel" id="disk-dd-panel" hidden>
-            <input class="dd-filter" id="disk-dd-filter" placeholder="输入文字快速筛选空间…" />
-            <div class="dd-list" id="disk-dd-list"></div>
-          </div>
-        </div>
+        <select id="disk-space" class="disk-select" title="选择空间"></select>
         <span class="disk-hint" id="disk-hint"></span>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
@@ -1884,25 +2023,12 @@ async function renderDisk(content: HTMLElement) {
     /* 空间列表拉取失败不阻塞：个人空间仍可用 */
   }
   diskSt.spaces = spaces;
-  // 自定义空间下拉（原生 select 的 optgroup 无法承载筛选输入与彩色分类头）：
-  // 支持文字输入快速筛选（匹配空间名/分类名），分类分组标题行使用彩色胶囊样式
-  const ddBtn = document.getElementById("disk-space-btn")!;
-  const ddPanel = document.getElementById("disk-dd-panel")!;
-  const ddFilter = document.getElementById("disk-dd-filter") as HTMLInputElement;
-  const ddList = document.getElementById("disk-dd-list")!;
-  const ddCur = document.getElementById("disk-space-cur")!;
-  let ddValue = "";
-  const ddSet = (id: string) => {
-    ddValue = id;
-    ddCur.textContent = spaces.find((s) => s.id === id)?.name || "…";
-  };
-  const ddRenderList = () => {
-    const kw = ddFilter.value.trim().toLowerCase();
-    const hit = (s: { id: string; name: string; cat: string }) =>
-      !kw || s.name.toLowerCase().includes(kw) || s.cat.toLowerCase().includes(kw);
+  // 原生 select + optgroup 按分类分组（个人空间置顶不分组）
+  const sel = document.getElementById("disk-space") as HTMLSelectElement;
+  {
     const groups: { name: string; opts: { id: string; name: string }[] }[] = [];
     for (const s of spaces) {
-      if (!s.cat || !hit(s)) continue;
+      if (!s.cat) continue;
       let g = groups.find((x) => x.name === s.cat);
       if (!g) {
         g = { name: s.cat, opts: [] };
@@ -1911,50 +2037,23 @@ async function renderDisk(content: HTMLElement) {
       g.opts.push({ id: s.id, name: s.name });
     }
     const plain = spaces
-      .filter((s) => !s.cat && hit(s))
-      .map(
-        (s) =>
-          `<div class="dd-opt${s.id === ddValue ? " on" : ""}" data-id="${esc(s.id)}">${esc(s.name)}</div>`,
-      )
+      .filter((s) => !s.cat)
+      .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`)
       .join("");
-    const grouped = groups
-      .map((g) => {
-        const c = catColorOf(g.name);
-        return (
-          `<div class="dd-cat" style="color:${c};background:${c}1f">${esc(g.name)}</div>` +
-          g.opts
-            .map(
-              (o) =>
-                `<div class="dd-opt${o.id === ddValue ? " on" : ""}" data-id="${esc(o.id)}">${esc(o.name)}</div>`,
-            )
-            .join("")
-        );
-      })
-      .join("");
-    ddList.innerHTML = plain + grouped || `<div class="dd-empty">没有匹配的空间</div>`;
-    ddList.querySelectorAll<HTMLElement>(".dd-opt").forEach((o) =>
-      o.addEventListener("click", () => {
-        ddSet(o.dataset.id!);
-        ddPanel.hidden = true;
-        void diskLoadSpace(ddValue);
-      }),
-    );
-  };
-  ddBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    ddPanel.hidden = !ddPanel.hidden;
-    if (!ddPanel.hidden) {
-      ddFilter.value = "";
-      ddRenderList();
-      ddFilter.focus();
-    }
-  });
-  ddFilter.addEventListener("input", ddRenderList);
-  ddPanel.addEventListener("click", (e) => e.stopPropagation());
+    sel.innerHTML =
+      plain +
+      groups
+        .map(
+          (g) =>
+            `<optgroup label="${esc(g.name)}">${g.opts.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join("")}</optgroup>`,
+        )
+        .join("");
+  }
   // 恢复上次目标所在空间，否则个人空间
   const last = diskLastTarget();
-  ddSet(last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id);
-  document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(ddValue));
+  sel.value = last && spaces.some((s) => s.id === last.spaceId) ? last.spaceId : spaces[0].id;
+  sel.addEventListener("change", () => void diskLoadSpace(sel.value));
+  document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   // 传输/日志管理器抽屉
   const drawer = document.getElementById("disk-drawer")!;
   document.getElementById("disk-transfer")!.addEventListener("click", (e) => {
@@ -1982,13 +2081,11 @@ async function renderDisk(content: HTMLElement) {
   document.getElementById("disk-sync-close")!.addEventListener("click", () =>
     syncDrawer.classList.remove("open"),
   );
-  // 点击主窗体页面（抽屉/下拉面板外任意区域）自动关闭
-  const ddWrap = document.getElementById("disk-dd")!;
+  // 点击主窗体页面（抽屉外任意区域）自动关闭
   content.addEventListener("click", (e) => {
     const t = e.target as Node;
     if (drawer.classList.contains("open") && !drawer.contains(t)) drawer.classList.remove("open");
     if (syncDrawer.classList.contains("open") && !syncDrawer.contains(t)) syncDrawer.classList.remove("open");
-    if (!ddPanel.hidden && !ddWrap.contains(t)) ddPanel.hidden = true;
   });
   diskTransferBadge();
   diskTransferRender();
@@ -2013,7 +2110,7 @@ async function renderDisk(content: HTMLElement) {
     })();
   });
   document.getElementById("disk-del")!.addEventListener("click", () => void diskDeleteSelected());
-  await diskLoadSpace(ddValue);
+  await diskLoadSpace(sel.value);
 }
 
 function diskFileName(n: DiskNode): string {
@@ -4681,8 +4778,8 @@ async function main() {
   // 稍后提醒：启动即补发超期提醒，之后每 30 秒轮检一次
   void fireDueSnoozes();
   window.setInterval(() => void fireDueSnoozes(), 30_000);
-  // 网盘同步后台节拍：30 秒巡检一次（实际执行间隔由 nextRunAt ≥ 频率把关，作业单飞）
-  window.setInterval(() => void diskSyncTick(), 30_000);
+  // 网盘同步后台节拍：每 1 分钟巡检；仅在 5 的整数倍分钟判定频率条件（nextRunAt），作业单飞
+  window.setInterval(() => void diskSyncTick(), 60_000);
   // 迷你速览条恢复（上次开启过则随启动重建；macOS 不提供该功能）
   if (!IS_MAC && localStorage.getItem("aif_mini_bar") === "1") {
     void api.toggleMiniBar(true).catch(() => {});

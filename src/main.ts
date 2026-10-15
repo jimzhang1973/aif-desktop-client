@@ -1232,6 +1232,7 @@ type TransferTask = {
   items: TransferItem[]; // 逐文件结果
   meta: TransferMeta;
   silent?: boolean; // 自动同步任务：只做统计载体，不进传输日志/徽标/持久化
+  ek?: string; // 创建时所属入口键（装载时按此过滤，保证各入口各自显示）
 };
 let diskTransfers: TransferTask[] = [];
 const diskSilentTasks: TransferTask[] = []; // 自动同步专用任务（内存态，不入传输日志）
@@ -1244,7 +1245,7 @@ function entryKey(): string {
   return `${settings?.ops_product ? 1 : 0}|${u}|${userInfo?.account || ""}`;
 }
 function transferStoreKey(): string {
-  return diskCurEntryKey ? `aif_disk_transfers__${diskCurEntryKey}` : "aif_disk_transfers";
+  return diskCurEntryKey ? `aif_disk_transfers__${diskCurEntryKey}` : "aif_disk_transfers__legacy";
 }
 
 /** 传输日志保留 7 天（读写双侧过滤，与同步日志同策略） */
@@ -1255,7 +1256,8 @@ function diskTransferLoad(): void {
     const raw = JSON.parse(localStorage.getItem(transferStoreKey()) || "[]") as TransferTask[];
     for (const t of raw) if (t.status === "running") t.status = "failed"; // 重载后残留的运行态视为中断
     const floor = Date.now() - TRANSFER_TTL;
-    diskTransfers = raw.filter((t) => t && t.startedAt >= floor).slice(0, 50); // 7 天过期剔除
+    // 只保留属于当前入口的任务（ek 为创建时的入口键；无 ek 的旧数据与其他入口数据一律剔除）
+    diskTransfers = raw.filter((t) => t && t.startedAt >= floor && t.ek === diskCurEntryKey).slice(0, 50);
   } catch {
     diskTransfers = [];
   }
@@ -1273,22 +1275,12 @@ function diskTransferPersist(): void {
 }
 
 /** 登录就绪（bootstrap 后调用）：按当前入口装载传输历史与同步配置。
- *  历史数据迁移：老版本只有全局键 aif_disk_transfers，首次按入口装载时一次性搬入当前入口键下。 */
+ *  旧版全局键 aif_disk_transfers 已废弃（曾导致各入口数据互相污染），登录就绪时一次性清除。 */
 function diskOnEntryReady(): void {
   const key = entryKey();
   if (key !== diskCurEntryKey) {
     diskCurEntryKey = key;
-    const tk = `aif_disk_transfers__${key}`;
-    if (!localStorage.getItem(tk)) {
-      const legacy = localStorage.getItem("aif_disk_transfers");
-      if (legacy) {
-        try {
-          localStorage.setItem(tk, legacy);
-        } catch {
-          /* 迁移失败不阻塞 */
-        }
-      }
-    }
+    localStorage.removeItem("aif_disk_transfers"); // 废弃的全局键，清除防再次污染
     diskTransferLoad();
     diskTransferBadge();
     diskTransferRender();
@@ -1296,7 +1288,7 @@ function diskOnEntryReady(): void {
   diskSyncArm(); // 装载本入口同步配置 + 计算第一个可执行时间点
 }
 function diskTransferStart(kind: "upload" | "download" | "delete", target: string, total: number, meta: TransferMeta = {}, silent = false): TransferTask {
-  const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta, silent };
+  const task: TransferTask = { id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, target, total, done: 0, status: "running", startedAt: Date.now(), items: [], meta, silent, ek: diskCurEntryKey };
   if (silent) {
     diskSilentTasks.unshift(task); // 自动同步：不进传输日志/徽标/持久化，仅供逐文件统计
   } else {

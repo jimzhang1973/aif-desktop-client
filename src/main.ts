@@ -4985,14 +4985,15 @@ function renderProfile(content: HTMLElement) {
       <div class="set-main"><div class="set-title">显示导航栏名称</div><div class="set-desc">左侧导航栏图标下方显示 2 字功能名称（默认关闭：只显示图标）</div></div>
       <label class="switch set-side"><input type="checkbox" id="set-nav-labels" ${s.nav_show_labels ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
-    <div class="set-row">
+    <!-- 右键上传菜单为 Windows 注册表功能，macOS 不渲染（该行若缺失会导致下方 minibar 绑定空引用） -->
+    ${IS_MAC ? "" : `<div class="set-row">
       ${ico("#0ea5e9", `<path d="M7.5 15.5a3.3 3.3 0 0 1-.3-6.6 4.4 4.4 0 0 1 8.5-.9 3.4 3.4 0 0 1 1.4 6.5"/><path d="M12 17.5v-5.2M9.8 14.3l2.2-2.2 2.2 2.2"/>`)}
       <div class="set-main">
         <div class="set-title">资源管理器右键上传菜单</div>
         <div class="set-desc">在文件右键菜单加入「上传到协作空间」，支持多选文件（逐个文件透传，保证全部进入上传队列）；上传目标为网盘页上次使用的目录（Windows 11 位于"显示更多选项"二级菜单）</div>
       </div>
       <label class="switch set-side"><input type="checkbox" id="set-ctxmenu" /><span class="track"></span><span class="thumb"></span></label>
-    </div>
+    </div>`}
     <div class="set-row">
       ${ico("#f43f5e", `<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>`)}
       <div class="set-main">
@@ -5092,10 +5093,10 @@ function renderProfile(content: HTMLElement) {
       if (settings) settings.sound = name;
     }),
   );
-  document.getElementById("set-save")!.addEventListener("click", saveSettings);
+  document.getElementById("set-save")?.addEventListener("click", saveSettings);
   // 「多入口切换」拨动即生效：全屏模式顶栏立刻出现/隐藏「入口信息 + 切换入口」，
   // 并立即持久化（不等「保存设置」），避免开关状态与顶栏实际表现不一致
-  document.getElementById("set-multi-entry")!.addEventListener("change", (e) => {
+  document.getElementById("set-multi-entry")?.addEventListener("change", (e) => {
     if (!settings) return;
     settings.multi_entry = (e.target as HTMLInputElement).checked;
     void updateEntryLabel(); // 内部联动 updateEntryBtn 控制顶栏显隐
@@ -5104,7 +5105,7 @@ function renderProfile(content: HTMLElement) {
     );
   });
   // 「显示导航栏名称」拨动即生效：导航栏功能名称立刻显隐并持久化（不等「保存设置」）
-  document.getElementById("set-nav-labels")!.addEventListener("change", (e) => {
+  document.getElementById("set-nav-labels")?.addEventListener("change", (e) => {
     if (!settings) return;
     settings.nav_show_labels = (e.target as HTMLInputElement).checked;
     applyNavLabels();
@@ -5112,12 +5113,19 @@ function renderProfile(content: HTMLElement) {
       toast("导航栏名称设置保存失败，请点击「保存设置」重试"),
     );
   });
-  // 「资源管理器右键上传菜单」开关：状态从注册表读，切换即注册/注销（HKCU，免管理员）
-  void api.diskContextMenuStatus().then((ok) => {
-    const el = document.getElementById("set-ctxmenu") as HTMLInputElement | null;
-    if (el) el.checked = !!ok;
-  });
-  document.getElementById("set-ctxmenu")!.addEventListener("change", (e) => {
+  // 「资源管理器右键上传菜单」开关（仅 Windows 渲染）：状态从注册表读，切换即注册/注销（HKCU，免管理员）
+  // 2026-10-15 实证：本区任何一个 getElementById 非空断言命中 null 都会中断 renderProfile
+  // 同步执行流，后续所有绑定（含角色下拉 initRoleSelect / 入口配置 initAccounts）全部失效——
+  // 这正是 macOS 上角色下拉点不开、入口配置折叠无反应的共同根因（mini 行 mac 不渲染）。
+  // 因此本区绑定一律用 ?. 防御，不再使用非空断言。
+  void api
+    .diskContextMenuStatus()
+    .then((ok) => {
+      const el = document.getElementById("set-ctxmenu") as HTMLInputElement | null;
+      if (el) el.checked = !!ok;
+    })
+    .catch(() => {});
+  document.getElementById("set-ctxmenu")?.addEventListener("change", (e) => {
     const enable = (e.target as HTMLInputElement).checked;
     void api.diskRegisterContextMenu(enable).then(
       () => toast(enable ? "已注册右键上传菜单（新开的右键菜单生效）" : "已移除右键上传菜单"),
@@ -5128,14 +5136,15 @@ function renderProfile(content: HTMLElement) {
     );
   });
   // 「迷你速览条」拨动即生效：创建/关闭右缘常置小窗，状态存 localStorage（重启恢复）
-  document.getElementById("set-minibar")!.addEventListener("change", (e) => {
+  // macOS 不渲染该行（速览条整体不提供），元素可能不存在 → 必须 ?.
+  document.getElementById("set-minibar")?.addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked;
     localStorage.setItem("aif_mini_bar", on ? "1" : "0");
     void api.toggleMiniBar(on).catch(() => toast("速览条切换失败，请重试"));
   });
   bindHotkeyCapture();
   // 清除快捷键：立即注销系统热键并持久化（空串=注销）
-  document.getElementById("hotkey-clear")!.addEventListener("click", async () => {
+  document.getElementById("hotkey-clear")?.addEventListener("click", async () => {
     const input = document.getElementById("set-hotkey") as HTMLInputElement | null;
     if (input) input.value = "";
     if (settings) settings.hotkey = "";
@@ -5146,7 +5155,7 @@ function renderProfile(content: HTMLElement) {
       toast("清除失败：" + String(e).replace(/^"|"$/g, ""));
     }
   });
-  document.getElementById("set-logout")!.addEventListener("click", async () => {
+  document.getElementById("set-logout")?.addEventListener("click", async () => {
     await api.logout();
     toast("已退出登录");
     // 清空未读与角标（换账号后不应带入旧未读）
@@ -5158,9 +5167,9 @@ function renderProfile(content: HTMLElement) {
     await bootstrap();
   });
   // 退出程序：两步确认防误触（3 秒内再点一次才退出，超时自动还原）
-  const quitBtn = document.getElementById("set-quit") as HTMLButtonElement;
+  const quitBtn = document.getElementById("set-quit") as HTMLButtonElement | null;
   let quitTimer = 0;
-  quitBtn.addEventListener("click", () => {
+  quitBtn?.addEventListener("click", () => {
     if (quitBtn.dataset.confirm === "1") {
       void api.quitApp();
       return;

@@ -1903,17 +1903,8 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   }
 
   // ---------- 本地 → 云 ----------
-  // 写权限前置检查：无写权限 → 整段跳过上传（云→本地下载为只读，不受影响）
-  let canWrite = true;
-  canWrite = await diskCanWrite(r.spaceId);
-  if (!canWrite) {
-    entry.errors.push("空间无写权限：本轮跳过「本地→云」上传（云→本地下载不受影响）");
-    diskLog(`${logTag}：空间无写权限，跳过上传（下载不受影响）`, false);
-    fpAll[r.id] = fp;
-    syncFpPersist(fpAll);
-    if (!dlItems.length) diskLog(`${logTag}：无变更`, true);
-    return entry;
-  }
+  // 写权限策略（2026-10-15 调整）：绝大多数空间可写 → 默认全部可写，不做前置探测；
+  // 上传阶段首个文件被服务端拒绝（权限类错误）→ 本轮标注「只读空间」，剩余文件不再尝试
   const locals = await api.diskLocalScan(r.localDir);
   // 同名登记：FILE 用真实文件名；在线文档同时登记「带导出后缀名」与「原始名」，
   // 命中在线文档的一律禁止上传/替换（在线文档只下载，云端只能在线上创建和编辑）
@@ -1995,7 +1986,16 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     arr.push({ path: syncLocalAbs(r.localDir, f.relPath), rel: key, mtime: f.mtime });
     upByDir.set(relDir, arr);
   }
+  // 上传执行：默认全部可写；首个上传文件被服务端权限类拒绝 → 本轮标注「只读空间」，
+  // 剩余文件（同批其余 + 未开始的批次）不再尝试，本轮上传提前结束
+  let readOnly = false;
+  let roSkipped = 0;
+  const permDenied = (m: string) => /权限|无权|403|forbidden|denied/i.test(m);
   for (const [relDir, batch] of upByDir) {
+    if (readOnly) {
+      roSkipped += batch.length; // 已标注只读：后续批次直接跳过
+      continue;
+    }
     const subjectId = relDir ? ensuredDirs.get(relDir.toLowerCase())! : r.subjectId;
     // 自动同步任务 silent=true：不写传输日志，仅作逐文件统计载体
     const task = diskTransferStart("upload", `同步 ↑ ${r.subjectPath}${relDir ? "/" + relDir : ""}`, batch.length, {}, true);
@@ -2004,9 +2004,22 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
     else diskTransferFailStart(task.id, "同步上传未正常收尾");
     const st = diskTaskStats(task.id);
+    const denied = st.fail > 0 ? st.fails.find((f) => permDenied(f.msg)) : undefined;
+    if (st.ok === 0 && denied) {
+      // 整批无一成功且含权限类拒绝 → 只留首个作证据，其余并入「跳过」，终止本轮上传
+      readOnly = true;
+      entry.upFail += 1;
+      entry.upFails.push({ name: "空间写入被服务端拒绝", msg: denied.msg });
+      roSkipped += batch.length - 1;
+      continue;
+    }
     entry.upOk += st.ok;
     entry.upFail += st.fail;
     entry.upFails.push(...st.fails);
+  }
+  if (readOnly) {
+    entry.errors.push(`空间拒绝写入，本轮已标注「只读空间」：上传提前结束，${roSkipped} 个文件未再尝试`);
+    diskLog(`${logTag}：空间拒绝写入（只读空间），上传提前结束，剩余 ${roSkipped} 个文件停止尝试`, false);
   }
   if (createdDirs) diskLog(`${logTag}：云端新建目录 ${createdDirs} 个`, true);
   if (dirErrors.length) entry.errors.push(...dirErrors);

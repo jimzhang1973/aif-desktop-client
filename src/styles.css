@@ -1262,29 +1262,29 @@ input:focus, select:focus { border-color: var(--accent); }
 /* ---------- 日历视图 ---------- */
 .cal-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .cal-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.cal-title { font-size: 14px; font-weight: 700; }
+.cal-title { font-size: 13px; font-weight: 700; }
 .cal-tabs { display: flex; gap: 4px; width: 150px; }
 .cal-tabs .sync-tab { flex: 1; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 10px 12px 4px; }
-.cal-dow { text-align: center; font-size: 11.5px; color: var(--text-3, #999); padding: 2px 0; }
+.cal-dow { text-align: center; font-size: 11px; color: var(--text-3, #999); padding: 2px 0; }
 .cal-cell { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 52px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .cal-cell:hover { background: var(--hover, rgba(0, 0, 0, .05)); }
 .cal-cell.out { opacity: .38; }
 .cal-cell.today { border-color: #0ea5e9; }
 .cal-cell.sel { background: rgba(14, 165, 233, .12); border-color: rgba(14, 165, 233, .5); }
-.cal-day { font-size: 12.5px; font-weight: 600; }
-.cal-count { font-size: 10.5px; font-weight: 700; color: #fff; background: #f97316; border-radius: 999px; padding: 0 6px; line-height: 15px; }
+.cal-day { font-size: 11.5px; font-weight: 600; }
+.cal-count { font-size: 10px; font-weight: 700; color: #fff; background: #f97316; border-radius: 999px; padding: 0 6px; line-height: 15px; }
 .cal-count.zero { background: var(--hover, rgba(0, 0, 0, .08)); color: var(--text-3, #999); }
 .cal-wk { min-height: 64px; }
 .cal-daycard { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
-.cal-daycard .cal-count { font-size: 12px; line-height: 18px; }
+.cal-daycard .cal-count { font-size: 11px; line-height: 17px; }
 .cal-detail { flex: 1; overflow: auto; min-height: 0; border-top: 1px solid var(--border); padding: 8px 12px 12px; }
-.cal-dt-head { font-size: 12.5px; font-weight: 700; padding: 4px 2px 8px; color: var(--text-2, #555); }
-.cal-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; text-align: left; font-size: 12.5px; }
+.cal-dt-head { font-size: 11.5px; font-weight: 700; padding: 4px 2px 8px; color: var(--text-2, #555); }
+.cal-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; text-align: left; font-size: 11.5px; }
 .cal-item:hover { background: var(--hover, rgba(0, 0, 0, .05)); }
-.cal-hm { flex: none; font-size: 11.5px; color: var(--text-3, #999); font-variant-numeric: tabular-nums; }
+.cal-hm { flex: none; font-size: 11px; color: var(--text-3, #999); font-variant-numeric: tabular-nums; }
 .cal-title2 { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-sender { flex: none; font-size: 11.5px; color: var(--text-3, #999); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-sender { flex: none; font-size: 11px; color: var(--text-3, #999); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 空间分类折叠：标题行可点击；「全部空间」行右侧的展开/折叠按钮随普通 chip 样式 */
 .space-group.toggle { cursor: pointer; user-select: none; }

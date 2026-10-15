@@ -94,6 +94,10 @@ const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 /// 「折叠列表页」双态图标（lucide panel-left-close / panel-left-open 风格）
 const FOLD_LIST_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9.5 4v16"/><path d="M16.5 9.5L14 12l2.5 2.5"/></svg>`;
 const UNFOLD_LIST_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9.5 4v16"/><path d="M14 9.5l2.5 2.5L14 14.5"/></svg>`;
+/// 帮助（内置使用手册）图标（lucide help-circle 风格），放置在「折叠」与「我的」之间
+const HELP_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.5-2.7 4.3"/><circle cx="12" cy="17.2" r=".7" fill="currentColor" stroke="none"/></svg>`;
+/// 内置使用手册地址：与前端同域（生产 tauri://localhost，开发 http://localhost:5173），随包分发的 public/manual.html
+const HELP_URL = `${location.origin}/manual.html`;
 /// 顶栏「切换入口」图标（lucide arrow-left-right 风格）
 const SWAP_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>`;
 
@@ -817,6 +821,7 @@ function renderPanel() {
           <button class="nav-btn" data-tab="quick" title="快捷功能"><span class="nav-ico idle">${ICONS.quick.idle}</span><span class="nav-ico active">${ICONS.quick.active}</span><span class="nav-label">快捷</span></button>
           <button class="nav-btn" data-tab="assistant" title="助手"><span class="nav-ico idle">${ICONS.assistant.idle}</span><span class="nav-ico active">${ICONS.assistant.active}</span><span class="nav-label">助手</span></button>
           <button class="nav-btn collapse-btn" id="btn-collapse" title="折叠列表页"><span class="nav-ico idle">${listCollapsed ? UNFOLD_LIST_SVG : FOLD_LIST_SVG}</span></button>
+          <button class="nav-btn nav-help" id="btn-help" title="帮助（使用手册）"><span class="nav-ico idle">${HELP_SVG}</span><span class="nav-label">帮助</span></button>
           <button class="nav-btn nav-bottom" data-tab="profile" title="我的"><span class="nav-ico idle">${ICONS.profile.idle}</span><span class="nav-ico active">${ICONS.profile.active}</span><span class="nav-label">我的</span></button>
         </nav>
         <div class="content" id="content"></div>
@@ -849,6 +854,8 @@ function renderPanel() {
   document.getElementById("btn-collapse")!.addEventListener("click", () => {
     setListCollapsed(!listCollapsed);
   });
+  // 帮助：以 webview 方式打开内置使用手册（manual.html，随包分发；生产 tauri://localhost，开发同 origin）
+  document.getElementById("btn-help")!.addEventListener("click", () => void openUrl(HELP_URL));
   // AI 问答：直接打开当前产品的 B/S 问答页
   document.getElementById("btn-ai")!.addEventListener("click", () => void openUrl(aiEntryUrl()));
   // 「多标签页」开关：关闭后只保留第一个标签，点击页面只更新该标签（持久化，仅 full 可见）
@@ -1746,9 +1753,8 @@ function diskSyncRender(): void {
       </div>
       <div class="sr-line sr-local" title="${esc(r.localDir || "未选择本地目录")}">📁 ${esc(r.localDir || "未选择本地目录")}</div>
       <div class="sr-btns">
-        <button class="disk-btn" data-act="local">选本地目录</button>
-        <button class="disk-btn" data-act="cloud">选网盘目录</button>
-        <button class="disk-btn ghost sr-del" data-act="del">删除</button>
+        <button class="disk-btn ghost sr-del" data-act="del">删除同步关系</button>
+        <span class="sr-note">删除不影响已同步的文件；如需改绑目录，请删除后用工具栏「＋同步」重新建立</span>
       </div>
     </div>`;
   const nextTxt = syncBusy
@@ -1757,7 +1763,7 @@ function diskSyncRender(): void {
       ? (syncCfg.rules.some((x) => x.enabled && x.localDir && x.subjectId)
           ? `下次同步 ${syncFmtTime(syncNextRunAt || Date.now())}`
           : "暂无启用的规则")
-      : "已关闭";
+      : "网盘同步暂停";
   body.innerHTML = tabs + `
     <div class="sync-warn" title="在线文档（DOC/MARKDOWN/RICHTEXT/EXCEL 等）不支持同步，仅同步普通附件文件（FILE）">
       <span class="sw-ico">⚠</span>在线文档不支持同步：仅同步普通附件文件（FILE 型），请将在线文档内容在 B/S 内自行导出
@@ -1766,7 +1772,6 @@ function diskSyncRender(): void {
       <label class="switch">
         <input type="checkbox" id="sync-enable" ${syncCfg.enabled ? "checked" : ""}/>
         <span class="sw-track"><span class="sw-thumb"></span></span>
-        <span class="sw-cap">是否启用</span>
       </label>
       <span class="sync-state">${nextTxt}</span>
     </div>
@@ -1777,11 +1782,10 @@ function diskSyncRender(): void {
       </select>
     </div>
     <div class="sync-sec">
-      <span class="sr-cap">同步规则（${syncCfg.rules.length}）</span>
-      <button class="disk-btn" id="sync-add">＋ 新增规则</button>
+      <span class="sr-cap">同步规则（${syncCfg.rules.length}，用工具栏「＋同步」建立）</span>
     </div>
     <div class="sync-rules">
-      ${syncCfg.rules.map(ruleCard).join("") || `<div class="dd-empty">暂无规则：点「＋ 新增规则」创建本地目录 ⇄ 网盘目录的同步</div>`}
+      ${syncCfg.rules.map(ruleCard).join("") || `<div class="dd-empty">暂无同步规则：在树上勾选一个云端目录后，点工具栏「＋同步」并选择本地目录即可建立</div>`}
     </div>
     <div class="sync-foot">上次同步：${syncFmtTime(syncCfg.lastRun)}　·　配置按当前入口独立保存</div>
     <div class="sync-picker" id="sync-picker" hidden>
@@ -1805,20 +1809,6 @@ function diskSyncRender(): void {
     syncCfg!.freqMin = SYNC_FREQS.includes(v) ? v : 30;
     syncCfgPersist();
     if (syncCfg!.lastRun > 0) syncNextRunAt = syncCfg!.lastRun + syncCfg!.freqMin * 60_000;
-    diskSyncRender();
-  });
-  body.querySelector("#sync-add")!.addEventListener("click", () => {
-    const rule: SyncRule = {
-      id: `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      localDir: "",
-      spaceId: "",
-      spaceName: "",
-      subjectId: "",
-      subjectPath: "",
-      enabled: true,
-    };
-    syncCfg!.rules.push(rule);
-    syncCfgPersist();
     diskSyncRender();
   });
   body.querySelectorAll<HTMLElement>(".sync-rule").forEach((card) => {
@@ -1880,7 +1870,7 @@ async function diskSyncRuleAct(rule: SyncRule, act: string): Promise<void> {
     syncPickSpaceId = rule.spaceId || diskSt.spaces[0]?.id || "";
     syncPickNodes = null;
   } else if (act === "del") {
-    const ok = await diskConfirm("删除同步规则", `确定删除规则「${rule.subjectPath || rule.localDir || "未配置"}」？（不影响云端与本地文件）`);
+    const ok = await diskConfirm("删除同步关系", `确定删除同步关系「${rule.subjectPath || rule.localDir || "未配置"}」？已同步的文件不受影响；如需改绑目录，删除后用工具栏「＋同步」重新建立。`);
     if (!ok) return;
     syncCfg!.rules = syncCfg!.rules.filter((x) => x.id !== rule.id);
     if (syncPickRuleId === rule.id) syncPickRuleId = "";
@@ -1977,6 +1967,7 @@ async function renderDisk(content: HTMLElement) {
         <button class="disk-btn" id="disk-dl" title="下载勾选的文件" disabled><span class="db-ico down">↓</span>下载</button>
         <button class="disk-btn danger" id="disk-del" title="删除选中的文件与目录（在线文档除外）" disabled>🗑</button>
         <button class="disk-btn ghost" id="disk-refresh" title="刷新">⟳</button>
+        <button class="disk-btn" id="disk-sync-bind" title="将当前唯一勾选的云端目录与本地目录建立同步">＋同步</button>
         <span class="tb-spacer"></span>
         <button class="disk-btn ghost" id="disk-sync" title="网盘同步">⇄ 网盘同步<span class="sync-dot" id="disk-sync-dot" hidden title="自动同步已开启"></span></button>
         <button class="disk-btn ghost" id="disk-transfer" title="传输日志">⇅ 传输日志<span class="badge" id="disk-transfer-badge"></span></button>
@@ -2081,11 +2072,13 @@ async function renderDisk(content: HTMLElement) {
   document.getElementById("disk-sync-close")!.addEventListener("click", () =>
     syncDrawer.classList.remove("open"),
   );
-  // 点击主窗体页面（抽屉外任意区域）自动关闭
+  // 点击主窗体页面（抽屉外任意区域）自动关闭。
+  // 用 composedPath 而非 contains：抽屉内控件点击会触发 innerHTML 重建，目标节点随即脱离 DOM，
+  // contains(脱离节点)=false 会把"抽屉内操作"误判为"点外部"而关闭抽屉（页签/开关一点就没的根因）。
   content.addEventListener("click", (e) => {
-    const t = e.target as Node;
-    if (drawer.classList.contains("open") && !drawer.contains(t)) drawer.classList.remove("open");
-    if (syncDrawer.classList.contains("open") && !syncDrawer.contains(t)) syncDrawer.classList.remove("open");
+    const path = e.composedPath();
+    if (drawer.classList.contains("open") && !path.includes(drawer)) drawer.classList.remove("open");
+    if (syncDrawer.classList.contains("open") && !path.includes(syncDrawer)) syncDrawer.classList.remove("open");
   });
   diskTransferBadge();
   diskTransferRender();
@@ -2110,7 +2103,51 @@ async function renderDisk(content: HTMLElement) {
     })();
   });
   document.getElementById("disk-del")!.addEventListener("click", () => void diskDeleteSelected());
+  document.getElementById("disk-sync-bind")!.addEventListener("click", () => void diskSyncBindSelected());
   await diskLoadSpace(sel.value);
+}
+
+/** 工具栏「＋同步」：将树上唯一勾选的云端目录与 OS 弹窗选中的本地目录建立同步规则（归属当前入口）。
+ *  规则建好后只能在「⇄ 网盘同步-同步配置」中启用/停用或删除，不支持改绑目录（需删除后重新建立）。 */
+async function diskSyncBindSelected(): Promise<void> {
+  if (!syncCfg) diskSyncArm();
+  if (!syncCfg) return;
+  if (diskSt.checked.size !== 1) return toast("请先在树上勾选且仅勾选一个目录");
+  const node = diskFirstCheckedDir();
+  if (!node) return toast("请勾选云端目录（而非文件）后再建立同步");
+  let localDir = "";
+  try {
+    localDir = await diskPickDir();
+  } catch {
+    return; // 用户取消
+  }
+  if (!localDir) return;
+  const spaceId = (document.getElementById("disk-space") as HTMLSelectElement)?.value || "";
+  const spaceName = diskSt.spaces.find((s) => s.id === spaceId)?.name || "";
+  // 沿父链拼云端目录路径（父级不在树清单或非目录即停）
+  let rel = node.name;
+  let cur = node;
+  for (;;) {
+    const pid = diskParentId(cur);
+    const p = pid ? diskSt.flat.get(pid) : undefined;
+    if (!p || p.nodeType !== "subject" || p.id === spaceId) break;
+    rel = `${p.name}/${rel}`;
+    cur = p;
+  }
+  const rule: SyncRule = {
+    id: `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    localDir,
+    spaceId,
+    spaceName,
+    subjectId: node.id,
+    subjectPath: rel ? `${spaceName}/${rel}` : spaceName,
+    enabled: true,
+  };
+  syncCfg.rules.push(rule);
+  syncCfgPersist();
+  diskSyncRefreshDot();
+  diskLog(`已建立同步关系：「${rule.subjectPath}」 ⇄ ${localDir}（当前入口）`, true);
+  toast("同步关系已建立，可在「⇄ 网盘同步-同步配置」中查看或删除");
 }
 
 function diskFileName(n: DiskNode): string {

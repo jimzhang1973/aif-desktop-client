@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>巨鹏软件客户端 · 使用手册</title>
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --ink: #1f2733;
+    --ink-soft: #5b6573;
+    --ink-faint: #8a93a3;
+    --line: #e6eaf1;
+    --brand: #2f6fed;
+    --brand-soft: #eaf1ff;
+    --brand-ink: #1c4fc4;
+    --teal: #0ea5a4;
+    --amber: #f59e0b;
+    --rose: #f43f5e;
+    --green: #16a34a;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(20,30,50,.06), 0 8px 24px rgba(20,30,50,.05);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  a { color: var(--brand-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* 布局：侧栏 + 内容 */
+  .layout { display: flex; min-height: 100vh; }
+  nav.toc {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 280px; flex: 0 0 280px; height: 100vh;
+    overflow-y: auto; background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 14px 40px;
+  }
+  nav.toc .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 16px; color: var(--ink);
+    padding: 4px 8px 16px; border-bottom: 1px dashed var(--line); margin-bottom: 14px;
+  }
+  nav.toc .logo .dot {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--brand), var(--teal));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px; font-weight: 800;
+  }
+  nav.toc details { margin: 2px 0; }
+  nav.toc summary {
+    cursor: pointer; list-style: none; padding: 7px 10px;
+    border-radius: 8px; font-weight: 600; color: var(--ink-soft);
+    font-size: 14px; user-select: none;
+  }
+  nav.toc summary::-webkit-details-marker { display: none; }
+  nav.toc summary::before {
+    content: "▸"; display: inline-block; margin-right: 6px;
+    transition: transform .15s; color: var(--ink-faint);
+  }
+  nav.toc details[open] > summary::before { transform: rotate(90deg); }
+  nav.toc summary:hover { background: var(--brand-soft); color: var(--brand-ink); }
+  nav.toc ol { list-style: none; margin: 4px 0 6px; padding: 0 0 0 14px; }
+  nav.toc ol li a {
+    display: block; padding: 5px 10px; border-radius: 7px;
+    color: var(--ink-soft); font-size: 13.5px;
+  }
+  nav.toc ol li a:hover { background: var(--brand-soft); color: var(--brand-ink); text-decoration: none; }
+
+  main { flex: 1; padding: 40px clamp(20px, 5vw, 72px); max-width: 960px; }
+  header.hero {
+    background: linear-gradient(135deg, #2f6fed, #0ea5a4);
+    color: #fff; border-radius: 18px; padding: 38px 36px; margin-bottom: 34px;
+    box-shadow: var(--shadow);
+  }
+  header.hero h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: .5px; }
+  header.hero p { margin: 4px 0 0; opacity: .95; font-size: 15px; }
+  header.hero .tags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  header.hero .tags span {
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.28);
+    padding: 4px 12px; border-radius: 20px; font-size: 12.5px;
+  }
+
+  section { background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 26px 30px; margin-bottom: 22px;
+    box-shadow: var(--shadow); scroll-margin-top: 18px; }
+  section > h2 {
+    margin: 0 0 14px; font-size: 21px; color: var(--ink);
+    display: flex; align-items: center; gap: 10px;
+  }
+  section > h2 .num {
+    flex: 0 0 30px; height: 30px; border-radius: 8px; background: var(--brand-soft);
+    color: var(--brand-ink); display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800;
+  }
+  h3 { font-size: 16.5px; margin: 22px 0 8px; color: var(--brand-ink); }
+  h4 { font-size: 14.5px; margin: 16px 0 6px; color: var(--ink); }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  code, .kbd {
+    background: #eef1f7; border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-size: 13px; color: #c0392b;
+  }
+  .kbd { color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; }
+  strong { color: var(--ink); }
+
+  .callout {
+    border-radius: 10px; padding: 12px 16px; margin: 14px 0;
+    border: 1px solid; font-size: 14px;
+  }
+  .callout .ttl { font-weight: 700; display: block; margin-bottom: 3px; }
+  .callout.tip { background: #eafaf1; border-color: #b8eccb; color: #15643a; }
+  .callout.warn { background: #fff6ec; border-color: #f4d9b0; color: #95530a; }
+  .callout.note { background: var(--brand-soft); border-color: #cfe0ff; color: var(--brand-ink); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: #f0f3f9; font-weight: 700; color: var(--ink-soft); }
+  tr:nth-child(even) td { background: #fafbfd; }
+
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps > li {
+    position: relative; padding: 6px 0 14px 44px; margin: 0;
+    border-left: 2px solid var(--line); margin-left: 14px;
+  }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: -16px; top: 2px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .steps > li:last-child { border-left-color: transparent; }
+
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; }
+  .pill.win { background: #e8f1ff; color: #1c4fc4; }
+  .pill.mac { background: #f0f0f3; color: #555; }
+  .pill.aif { background: #fff1e6; color: #b4540a; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr));
+    gap: 12px; margin: 14px 0; }
+  .feature-grid .card {
+    border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: #fcfdff;
+  }
+  .feature-grid .card .ico { font-size: 20px; }
+  .feature-grid .card b { display: block; margin: 6px 0 4px; font-size: 14.5px; }
+  .feature-grid .card span { color: var(--ink-soft); font-size: 13px; }
+
+  footer { text-align: center; color: var(--ink-faint); font-size: 13px;
+    padding: 10px 0 50px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
+  .small { font-size: 13px; color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="toc">
+    <div class="logo"><span class="dot">巨</span> 使用手册</div>
+    <details open>
+      <summary>入门与基础</summary>
+      <ol>
+        <li><a href="#intro">1. 软件简介</a></li>
+        <li><a href="#install">2. 安装与启动</a></li>
+        <li><a href="#login">3. 登录与多入口</a></li>
+        <li><a href="#ui">4. 主界面与导航</a></li>
+      </ol>
+    </details>
+    <details open>
+      <summary>核心功能模块</summary>
+      <ol>
+        <li><a href="#messages">5. 消息</a></li>
+        <li><a href="#todos">6. 待办</a></li>
+        <li><a href="#ops">7. 运维（AIF）</a></li>
+        <li><a href="#docs">8. 文档 / 空间</a></li>
+        <li><a href="#disk">9. 网盘（特色）</a></li>
+        <li><a href="#quick">10. 快捷功能</a></li>
+        <li><a href="#assistant">11. 助手（AI）</a></li>
+        <li><a href="#profile">12. 我的</a></li>
+      </ol>
+    </details>
+    <details open>
+      <summary>效率与桌面集成</summary>
+      <ol>
+        <li><a href="#tabs">13. 多标签页与命令面板</a></li>
+        <li><a href="#minibar">14. 迷你速览条（特色）</a></li>
+        <li><a href="#tray">15. 托盘与鼠标右键（特色）</a></li>
+        <li><a href="#hotkey">16. 全局快捷键</a></li>
+        <li><a href="#settings">17. 设置详解</a></li>
+      </ol>
+    </details>
+    <details open>
+      <summary>数据与维护</summary>
+      <ol>
+        <li><a href="#backup">18. 数据备份与恢复</a></li>
+        <li><a href="#faq">19. 常见问题</a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <h1>巨鹏软件客户端 · 使用手册</h1>
+      <p>窗口标题「业务小助手」 · 对接巨鹏 AIF / DCP 平台的桌面消息与协作终端</p>
+      <div class="tags">
+        <span>桌面客户端</span><span>Windows / macOS</span>
+        <span>消息 · 待办 · 网盘 · AI</span><span>Tauri 2 构建</span>
+      </div>
+    </header>
+
+    <!-- 1 -->
+    <section id="intro">
+      <h2><span class="num">1</span> 软件简介</h2>
+      <p><strong>巨鹏软件客户端</strong>（窗口标题显示为「业务小助手」，托盘名称随产品形态变化：运维为「运维小助手」、一表通为「一表通小助手」）是一款基于 Tauri 2 技术栈开发的轻量级桌面应用。它把浏览器端的巨鹏平台（<code>51yunwei.com.cn</code> 的 AIF 运维 / DCP 一表通）封装为本地常驻客户端，提供比网页更及时的消息提醒、桌面级集成与本地数据持久化。</p>
+      <h3>它能做什么</h3>
+      <div class="feature-grid">
+        <div class="card"><div class="ico">🔔</div><b>消息提醒</b><span>后台轮询，新消息弹窗+声音+托盘闪烁，支持系统通知与「稍后提醒」</span></div>
+        <div class="card"><div class="ico">✅</div><b>待办管理</b><span>待办面板、超时升级提醒、每日定时摘要</span></div>
+        <div class="card"><div class="ico">🌐</div><b>多标签页 WebView</b><span>在桌面壳内打开任意平台页面，像浏览器一样多标签</span></div>
+        <div class="card"><div class="ico">📁</div><b>网盘传输</b><span>个人空间浏览、批量上传/下载/删除/同步</span></div>
+        <div class="card"><div class="ico">🤖</div><b>AI 助手</b><span>直达 AIF / DCP 已授权智能体会话</span></div>
+        <div class="card"><div class="ico">📌</div><b>迷你速览条</b><span>屏幕右缘常驻小窗，悬停即看未读与待办（Windows）</span></div>
+      </div>
+      <div class="callout note">
+        <span class="ttl">产品形态</span>
+        客户端同时支持两套产品：<span class="pill aif">运维（AIF）</span> 与 <span class="pill win">一表通（DCP）</span>。两者会话隔离、数据不互通。AIF 才显示「运维」导航与告警；「助手」智能体列表随当前账号已授权情况加载。可在「我的 → 常用入口」中保存两套入口并一键切换。
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="install">
+      <h2><span class="num">2</span> 安装与启动</h2>
+      <h3>环境要求</h3>
+      <ul>
+        <li><span class="pill win">Windows</span> Windows 10 / 11（x64 或 arm64）。安装包为 <code>.msi</code> 或 <code>-setup.exe</code>（NSIS）。</li>
+        <li><span class="pill mac">macOS</span> macOS 11+，提供通用包（<code>.dmg</code>，同时支持 Apple Silicon 与 Intel）。</li>
+      </ul>
+      <h3>安装步骤</h3>
+      <ol class="steps">
+        <li>从分发渠道获取安装包（企业内部分发或 GitHub Releases 的 <code>.dmg</code> / <code>.msi</code>）。</li>
+        <li><span class="pill win">Windows</span> 双击安装包按向导完成安装；<span class="pill mac">macOS</span> 打开 <code>.dmg</code> 将应用拖入「应用程序」。</li>
+        <li>首次启动会进入登录页（见第 3 章）。</li>
+      </ol>
+      <div class="callout warn">
+        <span class="ttl">macOS 浏览器下载 / 未公证提示</span>
+        若安装包未经 Apple 公证，在他人 Mac 上首次打开会被 Gatekeeper 拦截（「无法验证开发者」）。自用可绕过：在终端执行 <code>xattr -cr /Applications/巨鹏软件客户端.app</code>，或在 Finder 中右键「打开」。正规分发需配置 Apple 开发者证书做签名与公证。
+      </div>
+      <h3>启动后</h3>
+      <p>客户端最小化到系统托盘常驻运行。点击托盘图标（或自定义全局快捷键）即可唤起主窗口。关闭主窗口默认<strong>并非退出程序</strong>，而是隐藏到托盘；需从设置或托盘菜单的「退出」彻底关闭。</p>
+    </section>
+
+    <!-- 3 -->
+    <section id="login">
+      <h2><span class="num">3</span> 登录与多入口</h2>
+      <h3>账号密码登录</h3>
+      <p>首次使用或退出登录后，进入登录页：</p>
+      <ul>
+        <li><strong>服务器地址</strong>：填写平台站点根地址，例如 <code>https://51yunwei.com.cn</code>（不含 <code>/AIF</code> 后缀）。</li>
+        <li><strong>账号 / 密码</strong>：平台账号与密码。</li>
+        <li><strong>图形验证码</strong>：连续输错密码 3 次后触发图形验证码，点击图片可刷新。验证码正确输入后方可登录。</li>
+      </ul>
+      <div class="callout tip">
+        <span class="ttl">服务器地址与产品路径</span>
+        设置中的「服务器设置」折叠区可展开修改站点根地址与产品路径，建议在登录前先确认正确（首次使用需初始化 URL / 产品后再登录）。
+      </div>
+
+      <h3>常用入口（多账号 / 多项目凭据管理）</h3>
+      <p>进入「<strong>我的 → 常用入口</strong>」可保存多组服务器入口，每组包含：项目形态（运维 / 一表通）、站点地址、账号、密码、备注。密码采用<strong>国密 SM4 加密</strong>后存储于本地数据库（不是明文）。</p>
+      <ul>
+        <li>主键为「项目 + 网址 + 账号」，同一项目同一网址下可保存多个账号。</li>
+        <li>选中历史入口会自动带出凭据并登录，成功后自动刷新数据。</li>
+        <li>支持「保存并登录」「保存」「删除该入口」。</li>
+      </ul>
+
+      <h3>自动登录</h3>
+      <p>在「设置 → 自动登录」开启后，启动时用已存凭据静默登录（若遇验证码则仍会弹出登录窗）。凭据来自系统钥匙串（Windows 凭据管理器 / macOS Keychain），重装系统或更换设备需重新登录一次。</p>
+
+      <h3>多入口切换（顶栏）</h3>
+      <p>开启「设置 → 多入口切换」后，全屏模式顶栏出现「切换入口」按钮，可在已保存的多个账号（同项目 + 网址多账号）间一键切换；切换会保存当前设置、切换 base_url / 产品、登录成功后整版刷新数据。失败时自动回滚，避免轮询打到错误地址。</p>
+
+      <h3>当前角色切换</h3>
+      <p>多角色账号可在「我的 → 当前角色」下拉切换，切换后立即生效。</p>
+
+      <h3>心跳与会话保活</h3>
+      <p>客户端按「我的 → 心跳间隔」（默认 60 秒，范围 30 秒 ~ 60 分钟）与平台同源保活；会话失效时自动用保存的入口凭据重登录，无需反复手动登录。</p>
+    </section>
+
+    <!-- 4 -->
+    <section id="ui">
+      <h2><span class="num">4</span> 主界面与导航</h2>
+      <p>主窗口默认尺寸 830×960，采用「左侧导航 + 右侧内容 + 顶部工具条 + 标签区」布局。</p>
+      <h3>顶部工具条</h3>
+      <table>
+        <thead><tr><th>控件</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td>常用入口 / 切换入口</td><td>显示当前入口信息；开启多入口切换后出现「切换入口」按钮</td></tr>
+          <tr><td>多标签页开关</td><td>开启后每个页面开新标签；关闭则只保留第一个标签，点击页面仅更新该标签</td></tr>
+          <tr><td>自动折叠开关</td><td>打开网页时自动折叠左侧列表页，提供更大页面空间</td></tr>
+          <tr><td>AI 问答按钮</td><td>直接打开当前产品的 AI 问答入口页</td></tr>
+          <tr><td>轮询状态徽标</td><td>显示最近一次轮询是否成功（正常 / 异常），点击可手动刷新数据</td></tr>
+          <tr><td>全屏切换</td><td>在常规窗口与全屏（铺满工作区）之间切换</td></tr>
+          <tr><td>关闭窗口</td><td>隐藏到系统托盘（不是退出程序）</td></tr>
+        </tbody>
+      </table>
+
+      <h3>左侧导航（九大模块）</h3>
+      <div class="feature-grid">
+        <div class="card"><div class="ico">✉️</div><b>消息</b><span>未读消息列表、系统通知、转已读</span></div>
+        <div class="card"><div class="ico">📋</div><b>待办</b><span>待办事项面板、超时提醒</span></div>
+        <div class="card"><div class="ico">🛠️</div><b>运维</b><span>仅 AIF：应用中心与告警（DCP 隐藏）</span></div>
+        <div class="card"><div class="ico">📄</div><b>文档</b><span>文档库浏览</span></div>
+        <div class="card"><div class="ico">🗂️</div><b>空间</b><span>有权限的空间</span></div>
+        <div class="card"><div class="ico">💾</div><b>网盘</b><span>个人空间传输（重点章）</span></div>
+        <div class="card"><div class="ico">⚡</div><b>快捷</b><span>B/S 快捷入口网格</span></div>
+        <div class="card"><div class="ico">🤖</div><b>助手</b><span>已授权 AI 智能体</span></div>
+        <div class="card"><div class="ico">👤</div><b>我的</b><span>账号、常用入口、设置入口</span></div>
+      </div>
+      <p class="small">导航栏名称默认隐藏，只显示图标；开启「设置 → 显示导航栏名称」后图标下方显示 2 字功能名。位于「折叠」与「我的」之间的「帮助」按钮，会以独立窗口打开本使用手册（内置页面，随安装包分发，无需联网）。</p>
+    </section>
+
+    <!-- 5 -->
+    <section id="messages">
+      <h2><span class="num">5</span> 消息</h2>
+      <p>客户端按心跳/轮询间隔后台拉取新消息，并在「消息」导航中展示列表（标题、正文摘要、接收时间）。每条未读消息有角标计数。</p>
+      <h3>新消息的提醒方式</h3>
+      <ul>
+        <li><strong>弹窗</strong>：收到新消息以桌面弹窗提示（非紧急消息默认不闪烁托盘，详见托盘章节）。</li>
+        <li><strong>提示音</strong>：按设置播放「叮 / 风铃 / 水滴」三种音效之一。</li>
+        <li><strong>系统通知</strong>：发出系统级通知，点击通知可跳回对应消息并标记已读。</li>
+        <li><strong>托盘角标 / 闪烁</strong>：托盘图标显示未读数；紧急场景闪烁提示。</li>
+      </ul>
+      <h3>稍后提醒</h3>
+      <p>在消息行的「稍后」按钮，可将这条提醒<strong>推迟 30 分钟</strong>后再次发送系统通知（不立即打开消息）。同一消息重复点击「稍后」会顺延而非叠加。计划持久化在本地，重启后恢复；超期 24 小时的提醒自动丢弃。</p>
+      <h3>转已读</h3>
+      <p>点击任意未读消息行即标记该条为已读（角标与列表样式同步更新）并打开其链接页面。系统通知/弹窗点击跳转也会按 URL 自动转已读。</p>
+      <h3>免打扰与过滤</h3>
+      <table>
+        <thead><tr><th>设置</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>勿扰时段</td><td>时段内新消息只计未读角标：不弹窗、不响铃、不闪托盘（支持跨午夜，如 22:00 ~ 08:00）</td></tr>
+          <tr><td>消息静音关键词</td><td>标题或正文命中任一关键词的消息不弹窗、不响铃（未读角标照常）。多个关键词用逗号分隔</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 6 -->
+    <section id="todos">
+      <h2><span class="num">6</span> 待办</h2>
+      <p>「待办」导航展示待办事项面板，每条事项可包含多条待办条目（角标按其合计口径统计）。点击事项可直达办理页。</p>
+      <h3>待办超时升级提醒</h3>
+      <p>在「设置 → 待办超时提醒」设定天数（如 3 天）后，事项在本地可见超过该天数仍未办结时，<strong>弹一次升级提醒并闪托盘</strong>（每个事项只提醒一次），帮助避免遗漏长期挂起的任务。</p>
+      <h3>每日定时摘要</h3>
+      <p>开启「设置 → 每日定时摘要」并指定时间后，每天固定时刻推送一条汇总：<strong>待办 N 件未办结 + 今日新消息 M 条</strong>，形成每天看一眼的习惯锚点。</p>
+      <h3>托盘待办速览</h3>
+      <p>右键托盘弹出的菜单中段为「待办速览」，列出未办结事项前 5 件，点击任一项即弹出面板并直达其办理页（详见第 15 章）。</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="ops">
+      <h2><span class="num">7</span> 运维（AIF）</h2>
+      <p><span class="pill aif">仅运维（AIF）产品显示</span> 此导航在一表通（DCP）下自动隐藏。</p>
+      <p>「运维」模块聚合平台的应用中心与告警信息：</p>
+      <ul>
+        <li><strong>应用列表</strong>：按分组展示运维应用，支持搜索。</li>
+        <li><strong>告警状态</strong>：状态为「告警」的应用会以红色高亮显示其告警事件文本。</li>
+        <li><strong>迷你速览条联动</strong>：在迷你条（Windows）上，有告警的应用会亮红并显示数量，点击直达应用页。</li>
+      </ul>
+    </section>
+
+    <!-- 8 -->
+    <section id="docs">
+      <h2><span class="num">8</span> 文档 / 空间</h2>
+      <h3>文档</h3>
+      <p>「文档」导航浏览平台文档库内容（知识库文章等），在桌面壳内以网页形式呈现与浏览。</p>
+      <h3>空间</h3>
+      <p>「空间」导航展示你<strong>有权限</strong>的协作空间，便于在客户端内直接访问团队空间内容。</p>
+      <div class="callout note">
+        <span class="ttl">与「网盘」的区别</span>
+        「文档 / 空间」是<strong>浏览</strong>平台已有内容；「网盘」章节的传输功能才是<strong>把本地文件上传到个人空间 / 从空间下载到本地</strong>的双向文件管理。
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section id="disk">
+      <h2><span class="num">9</span> 网盘（特色功能）</h2>
+      <p>「网盘」模块把平台的<strong>个人空间</strong>（以及你有权限的空间）变成一个桌面文件管理器：浏览目录树、批量上传、下载、删除、并可将本地目录与空间同步。</p>
+
+      <h3>9.1 浏览目录</h3>
+      <ul>
+        <li>左侧为<strong>目录树</strong>（subject 目录节点），点击目录展开其下文件与子目录（扁平列表）。</li>
+        <li>文章节点分两类：<code>FILE</code> 型附件（真实文件）与在线文档（DOC / RICHTEXT / MARKDOWN / EXCEL 等）。</li>
+        <li>个人空间的 <code>spaceId</code> 由客户端自动从平台页面注入的变量识别并缓存。</li>
+      </ul>
+
+      <h3>9.2 上传</h3>
+      <ul>
+        <li>在网盘页选择目标目录，将本地文件加入上传队列，批量上传。</li>
+        <li><strong>单文件上限 100 MB</strong>（平台限制）。超过会在上传前拦截并提示。</li>
+        <li><strong>类型白名单</strong>：仅允许常见办公 / 文本 / 图片等类型（如 doc/docx/xls/xlsx/ppt/pptx/pdf/zip/png/jpg/mp4/md/txt/json/xml/html 等），非白名单类型在上传前即拦截，不会发起请求。</li>
+        <li><strong>同名处理</strong>：目标目录已存在同名 <code>FILE</code> 附件时走「替换」（保留文章 id 替换文件内容）；否则新建登记，不会产生重复附件。单次登记上限 20 个文件/批。</li>
+        <li>上传进度在网盘页以任务条展示（每文件成功/失败状态）。</li>
+      </ul>
+
+      <h3>9.3 下载</h3>
+      <ul>
+        <li>勾选要下载的文件/目录，选择本地目标文件夹，批量下载。</li>
+        <li>下载按文章类型分流：
+          <table>
+            <thead><tr><th>类型</th><th>下载产物</th></tr></thead>
+            <tbody>
+              <tr><td><code>FILE</code> 附件</td><td>直连下载原始文件（保留原格式/扩展名）</td></tr>
+              <tr><td><code>MARKDOWN</code></td><td>导出为 <code>.md</code>（保留 UTF-8 原文）</td></tr>
+              <tr><td><code>DOC</code> / <code>RICHTEXT</code></td><td>服务端转换为 <code>.docx</code></td></tr>
+              <tr><td><code>EXCEL</code> / <code>COLLEXCEL</code></td><td>导出为 <code>.xlsx</code>（原始表格）</td></tr>
+            </tbody>
+          </table>
+        </li>
+        <li>手动下载默认<strong>防冲突重命名</strong>（同名文件追加 <code>(1)</code> / <code>(2)</code>）；网盘「同步」模式则直接覆盖写。</li>
+        <li>若服务端返回错误页（如无下载/导出权限），该文件会被标记为失败并提示，不污染本地。</li>
+      </ul>
+
+      <h3>9.4 删除</h3>
+      <ul>
+        <li>在网盘页可删除选中的文件（文章）与目录（subject）。</li>
+        <li>删除前请确认：<strong>在线文档（非 FILE 文章）需在前端排除</strong>，删除命令只接收可删除的 id。</li>
+        <li>删除结果汇总显示成功/失败数量，便于核对。</li>
+      </ul>
+      <div class="callout warn">
+        <span class="ttl">删除是高风险的不可逆操作</span>
+        删除会直接作用于平台空间。操作前请逐项确认要删除的文件与目录；建议重要资料先下载备份（见第 18 章）再删除。
+      </div>
+
+      <h3>9.5 资源管理器右键「上传到协作空间」（Windows 特色）</h3>
+      <p>在「设置 → 资源管理器右键上传菜单」开启后，Windows 资源管理器对文件的右键菜单（Win11 在「显示更多选项」二级菜单中）会出现 <strong>「上传到协作空间」</strong>。选中一个或多个文件，点击即可把它们送入客户端的上传队列。</p>
+      <ul>
+        <li>采用系统注册表（HKCU，无需管理员权限）注册，免安装驱动。</li>
+        <li>支持<strong>多选文件</strong>：对每个选中文件逐个透传，保证全部进入上传队列（规避 Win11 部分环境 <code>%*</code> 不展开问题）。</li>
+        <li><strong>上传目标</strong>为网盘页上次使用的目录。</li>
+        <li>开关即注册/注销，新开右键菜单生效；关闭后从注册表移除。</li>
+      </ul>
+      <div class="callout note"><span class="ttl">适用范围</span>此右键菜单仅 Windows 支持；macOS 无对应系统级右键扩展，请使用网盘页内的上传功能。</div>
+    </section>
+
+    <!-- 10 -->
+    <section id="quick">
+      <h2><span class="num">10</span> 快捷功能</h2>
+      <p>「快捷」导航以网格形式展示平台（B/S）配置的<strong>快捷入口</strong>（图标 + 名称）。点击任一入口即在标签页打开对应页面，相当于把常用功能钉在客户端首页。</p>
+      <p>迷你速览条上的「快捷」按钮悬停也会浮出同一份快捷方式列表，无需打开主窗口即可快速跳转。</p>
+    </section>
+
+    <!-- 11 -->
+    <section id="assistant">
+      <h2><span class="num">11</span> 助手（AI）</h2>
+      <p>「助手」导航列出当前账号<strong>已授权的 AI 智能体</strong>（名称、描述、图标）。点击任一智能体即打开其会话页，开始对话。</p>
+      <ul>
+        <li>智能体列表随接口缓存（5 分钟 TTL），点击顶栏「刷新」或助手页的刷新按钮可强制刷新。</li>
+        <li>未授权任何智能体时显示「当前账号没有已授权的智能体」。</li>
+        <li>顶栏的 <strong>AI 问答</strong> 按钮则直接打开平台 AI 问答入口页（与智能体会话页同一体系）。</li>
+        <li>迷你速览条的「助手」按钮悬停可浮出智能体列表，点击直达会话。</li>
+      </ul>
+    </section>
+
+    <!-- 12 -->
+    <section id="profile">
+      <h2><span class="num">12</span> 我的</h2>
+      <p>「我的」页面是<strong>账号与本地配置中枢</strong>：</p>
+      <ul>
+        <li><strong>账号信息</strong>：显示当前用户姓名、角色、账号；多角色可在「当前角色」下拉切换。</li>
+        <li><strong>重启后恢复标签页</strong>：开启后，下次进入全屏模式自动恢复上次打开的标签页（最多 8 个；休眠的标签点击后再加载，不拖慢启动）。</li>
+        <li><strong>心跳间隔</strong>：与会话保活同源，默认 60 秒，可在 30 秒 ~ 60 分钟间调整。</li>
+        <li><strong>常用入口</strong>：保存 / 切换 / 删除多组服务器入口（详见第 3 章）。</li>
+        <li><strong>设置入口</strong>：所有开关与偏好设置集中在此（详见第 17 章）。</li>
+      </ul>
+    </section>
+
+    <!-- 13 -->
+    <section id="tabs">
+      <h2><span class="num">13</span> 多标签页与命令面板</h2>
+      <h3>多标签页</h3>
+      <p>开启顶栏「多标签页」后，每点击一个页面都会新开一个标签页；关闭则只保留首个标签，点击页面仅更新该标签。标签区位于内容区顶部：</p>
+      <ul>
+        <li><span class="kbd">Ctrl</span> + <span class="kbd">T</span> 新建空白标签页（全屏模式）。</li>
+        <li><span class="kbd">Ctrl</span> + <span class="kbd">W</span> 关闭当前标签页。</li>
+        <li>标签长时间（60 分钟）未激活会进入「休眠」状态，点击重新加载，节省资源。</li>
+      </ul>
+      <h3>命令面板（快速跳转）</h3>
+      <p>按 <span class="kbd">Ctrl</span> + <span class="kbd">K</span>（macOS 同）打开命令面板，输入即搜：</p>
+      <ul>
+        <li>功能（如「消息」「网盘」「设置」）</li>
+        <li>待办事项（按标题匹配，回车直达办理页）</li>
+        <li>消息（按内容匹配）</li>
+        <li>常用入口（按名称匹配，回车打开）</li>
+      </ul>
+      <p>这是绕过层层菜单、直达目标的最快方式。</p>
+    </section>
+
+    <!-- 14 -->
+    <section id="minibar">
+      <h2><span class="num">14</span> 迷你速览条（特色功能）</h2>
+      <p><span class="pill win">仅 Windows</span> 在「设置 → 迷你速览条」开启后，屏幕<strong>右缘会常驻一条细长小窗</strong>（macOS 不提供此功能，对应开关隐藏）。</p>
+      <h3>它能做什么</h3>
+      <ul>
+        <li>常显<strong>未读消息数</strong>与<strong>待办数</strong>：有内容时高亮（红），无内容时置灰，一眼可辨。</li>
+        <li><strong>悬停即展开预览卡</strong>：显示待办未办结 Top5、最近消息、告警应用（AIF）、可用智能体、快捷方式。</li>
+        <li>点击预览卡中的任一行 / 按钮，<strong>直接唤起主窗口并跳转到对应页面</strong>（消息 / 待办 / 应用 / 智能体会话 / 快捷功能 / 面板），无需手动打开主窗。</li>
+        <li>悬停「助手」/「快捷」按钮可把卡片整体切换为对应列表。</li>
+        <li>速览条带「关闭」按钮，关闭后状态记忆，重启恢复。</li>
+      </ul>
+      <div class="callout tip">
+        <span class="ttl">使用场景</span>
+        把主窗口收起、只留迷你条，既能随时看到有没有新消息/待办，又不被大窗口打扰；需要时悬停或点击即可直达，是「常驻但不占地方」的提醒方式。
+      </div>
+    </section>
+
+    <!-- 15 -->
+    <section id="tray">
+      <h2><span class="num">15</span> 托盘与鼠标右键（特色功能）</h2>
+      <h3>系统托盘</h3>
+      <p>客户端最小化后以托盘图标常驻。托盘行为是桌面集成的关键：</p>
+      <table>
+        <thead><tr><th>操作</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td><strong>左键单击</strong>托盘</td><td>右下角弹出主面板并聚焦（不自动收起）。同时视为「新消息已阅」：停止托盘闪烁</td></tr>
+          <tr><td><strong>右键单击</strong>托盘</td><td>弹出右键菜单（见下）</td></tr>
+          <tr><td>鼠标悬停托盘</td><td>按系统深浅模式刷新菜单图标（主题切换兜底）</td></tr>
+        </tbody>
+      </table>
+
+      <h3>托盘右键菜单</h3>
+      <p>右键托盘图标弹出菜单，包含：</p>
+      <ul>
+        <li><strong>打开面板</strong>：显示并聚焦主窗口。</li>
+        <li><strong>刷新数据</strong>：立即触发一次后台轮询，拉取最新消息/待办。</li>
+        <li><strong>设置</strong>：打开主窗口并跳到设置页。</li>
+        <li><strong>退出</strong>：彻底关闭程序（区别于「关闭窗口 = 隐藏到托盘」）。</li>
+        <li><strong>待办速览（动态段）</strong>：菜单中段列出未办结事项前 5 件，标注「待办速览（N 件未办）」；点击其中任一项即弹出面板并直达其办理页。</li>
+      </ul>
+      <div class="callout note">
+        <span class="ttl">菜单主题自适应</span>
+        托盘菜单图标随系统浅色/深色模式自动切换（墨黑 / 近白双套配色）。macOS 会忽略菜单项的小图标（系统限制），功能不受影响。
+      </div>
+
+      <h3>资源管理器右键（Windows）</h3>
+      <p>即第 9.5 节的「上传到协作空间」——在文件管理器右键上传文件到网盘。这是另一处「鼠标右键」集成，把桌面文件无缝送进平台个人空间。</p>
+    </section>
+
+    <!-- 16 -->
+    <section id="hotkey">
+      <h2><span class="num">16</span> 全局快捷键</h2>
+      <p>在「设置 → 快捷键」中可自定义一个<strong>系统级</strong>热键，用于一键显示 / 隐藏主窗口（即使客户端在后台也能唤起）。</p>
+      <ul>
+        <li>点击输入框后按下组合键即录入；组合必须包含 <span class="kbd">Ctrl</span> / <span class="kbd">Alt</span> / <span class="kbd">Win</span> 之一（仅 Shift+字母不算有效热键）。</li>
+        <li>按 <span class="kbd">Esc</span> 或点击「清除」可注销快捷键。</li>
+        <li>行为：主窗口「可见且拥有焦点」时按下→隐藏到托盘；否则→弹出并抢前台。</li>
+        <li>若提示注册失败，通常是该组合已被其他程序占用，换一个即可。</li>
+      </ul>
+    </section>
+
+    <!-- 17 -->
+    <section id="settings">
+      <h2><span class="num">17</span> 设置详解</h2>
+      <p>所有设置集中在「我的 → 设置」（顶栏齿轮或托盘菜单「设置」也可进入）。下表列出各项开关与默认值：</p>
+      <table>
+        <thead><tr><th>设置项</th><th>说明</th><th>默认</th></tr></thead>
+        <tbody>
+          <tr><td>多入口切换</td><td>顶栏出现「切换入口」按钮，在多个账号间一键切换</td><td>关闭</td></tr>
+          <tr><td>显示导航栏名称</td><td>导航图标下方显示 2 字功能名（拨动即生效）</td><td>关闭</td></tr>
+          <tr><td>资源管理器右键上传菜单</td><td>Windows 资源管理器右键加「上传到协作空间」（仅 Windows）</td><td>关闭</td></tr>
+          <tr><td>勿扰时段</td><td>时段内新消息只计未读角标，不弹窗/不响铃/不闪托盘</td><td>关闭</td></tr>
+          <tr><td>消息静音关键词</td><td>命中关键词的消息不弹窗/不响铃（逗号分隔）</td><td>空</td></tr>
+          <tr><td>待办超时提醒</td><td>事项超 N 天未办结弹一次升级提醒并闪托盘（0=关闭）</td><td>0</td></tr>
+          <tr><td>每日定时摘要</td><td>每天固定时刻推送「待办 N + 今日新消息 M」汇总</td><td>关闭</td></tr>
+          <tr><td>迷你速览条</td><td>屏幕右缘常驻小窗（仅 Windows，重启恢复）</td><td>关闭</td></tr>
+          <tr><td>自动登录</td><td>启动用已存凭据静默登录（遇验证码仍弹窗）</td><td>关闭</td></tr>
+          <tr><td>开机自启</td><td>随系统启动并在后台运行</td><td>关闭</td></tr>
+          <tr><td>新消息提示音</td><td>叮 / 风铃 / 水滴 三选一</td><td>叮</td></tr>
+          <tr><td>快捷键</td><td>系统级显隐主窗口热键（含 Ctrl/Alt/Win）</td><td>空</td></tr>
+          <tr><td>心跳间隔</td><td>会话保活与轮询频率（30 秒 ~ 60 分钟）</td><td>60 秒</td></tr>
+          <tr><td>重启后恢复标签页</td><td>下次进入全屏自动恢复上次标签（≤8 个）</td><td>关闭</td></tr>
+        </tbody>
+      </table>
+      <p class="small">部分开关（多入口切换、导航栏名称、右键菜单、迷你速览条、快捷键）拨动或保存即立即持久化；其余改动点「保存设置」后生效。页面底部还有「退出登录」与两步确认的「退出程序」。</p>
+    </section>
+
+    <!-- 18 -->
+    <section id="backup">
+      <h2><span class="num">18</span> 数据备份与恢复</h2>
+      <p>客户端的所有本地数据（设置、消息/待办历史、加密后的账号保险库、SM4 密钥等）都存放在一个本地数据库文件中。</p>
+
+      <h3>18.1 数据存放在哪里</h3>
+      <p>核心数据目录由应用标识符 <code>cn.aif.desktopclient</code> 决定：</p>
+      <table>
+        <thead><tr><th>系统</th><th>路径</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill win">Windows</span></td><td><code>C:\Users\&lt;你的用户名&gt;\AppData\Local\cn.aif.desktopclient\</code></td></tr>
+          <tr><td><span class="pill mac">macOS</span></td><td><code>~/Library/Application Support/cn.aif.desktopclient/</code></td></tr>
+        </tbody>
+      </table>
+      <p class="small">Windows 的 <code>AppData\Local</code> 是隐藏文件夹，需在资源管理器勾选「显示隐藏的项目」才能看到。</p>
+      <p>该目录内关键文件：</p>
+      <table>
+        <thead><tr><th>文件</th><th>内容</th><th>是否需备份</th></tr></thead>
+        <tbody>
+          <tr><td><code>aif_client.db</code></td><td><strong>核心数据库</strong>：设置、消息/待办历史、账号保险库（SM4 加密）、密钥</td><td>✅ 必须</td></tr>
+          <tr><td><code>icon_cache/</code></td><td>快捷入口图标本地缓存</td><td>否（可重建）</td></tr>
+          <tr><td><code>captured_requests.json</code></td><td>登录探针调试记录</td><td>否</td></tr>
+          <tr><td><code>logs/巨鹏软件客户端.log</code></td><td>运行日志</td><td>否（排查用）</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <span class="ttl">登录凭据不在该目录</span>
+        会话 cookie / JSESSIONID 存放在<strong>系统钥匙串</strong>（Windows 凭据管理器 / macOS Keychain），不在应用数据目录。会话有过期时效，重装后重新登录一次即可恢复，因此<strong>备份凭据意义不大</strong>。网盘下载的文件也不在此目录，而是你下载时自选的保存位置。
+      </div>
+
+      <h3>18.2 如何备份</h3>
+      <p>核心是<strong>复制整个应用数据目录</strong>（重点是其中的 <code>aif_client.db</code>）。</p>
+      <h4>Windows（PowerShell，先完全退出软件）</h4>
+      <pre style="background:#0f172a;color:#e2e8f0;padding:14px 16px;border-radius:10px;overflow:auto;font-size:13px"><code>Copy-Item "$env:LOCALAPPDATA\cn.aif.desktopclient" "D:\Backup\aif-client-backup" -Recurse -Force</code></pre>
+      <h4>macOS（终端）</h4>
+      <pre style="background:#0f172a;color:#e2e8f0;padding:14px 16px;border-radius:10px;overflow:auto;font-size:13px"><code>cp -R ~/Library/Application\ Support/cn.aif.desktopclient /Volumes/Backup/aif-client-backup</code></pre>
+      <div class="callout note">
+        <span class="ttl">备份前务必先退出软件</span>
+        从托盘菜单「退出」彻底关闭程序，否则数据库可能正在写入，复制出来会损坏。想更稳妥也可只复制单个 <code>aif_client.db</code> 文件——它已包含全部设置、消息、账号保险库。
+      </div>
+
+      <h3>18.3 如何恢复</h3>
+      <ol class="steps">
+        <li><strong>完全退出软件</strong>（托盘「退出」）。</li>
+        <li>把备份的 <code>cn.aif.desktopclient</code> 目录<strong>整体覆盖</strong>回原路径（Windows 为 <code>AppData\Local\cn.aif.desktopclient\</code>，macOS 为 <code>~/Library/Application Support/cn.aif.desktopclient/</code>）。</li>
+        <li>重新启动软件。</li>
+        <li><strong>重新登录一次</strong>：因为钥匙串里的会话没备份、已过期，本地设置/历史/账号保险库会从 <code>aif_client.db</code> 自动加载，但需刷新会话。</li>
+      </ol>
+      <div class="callout tip">
+        <span class="ttl">一句话总结</span>
+        备份 = 关软件 → 拷 <code>AppData\Local\cn.aif.desktopclient</code> 整个文件夹；恢复 = 覆盖回去 + 重新登录。消息/待办历史、设置、保存的账号密码（加密在库内）全部在 <code>aif_client.db</code> 中。
+      </div>
+    </section>
+
+    <!-- 19 -->
+    <section id="faq">
+      <h2><span class="num">19</span> 常见问题</h2>
+      <h4>Q1：关闭主窗口后程序还在运行吗？</h4>
+      <p>是的。关闭窗口只是隐藏到托盘常驻；需从托盘菜单「退出」或设置页「退出程序」才彻底关闭。</p>
+      <h4>Q2：点了托盘/快捷键没反应，窗口不弹出？</h4>
+      <p>Windows 下从托盘或全局热键首次唤起时，本进程可能没有前台权限，系统会拒绝置顶。客户端已用「强制置顶一次再还原」的方式处理，通常第一次即可到最前；若仍异常，尝试先点击一下任务栏再试，或重启客户端。</p>
+      <h4>Q3：网盘上传提示「非白名单类型」或「超过 100MB」？</h4>
+      <p>平台限制单文件 ≤100MB，且只允许常见办公/文本/图片等类型。请压缩分包或改用平台网页上传大文件/非常见类型。</p>
+      <h4>Q4：网盘下载的在线文档变成了 .docx / .md / .xlsx？</h4>
+      <p>这是正常的：在线文档（DOC/RICHTEXT→DOCX、MARKDOWN→MD、EXCEL→XLSX）由服务端转换导出；只有 <code>FILE</code> 附件才保留原始格式。</p>
+      <h4>Q5：macOS 没有迷你速览条？</h4>
+      <p>对，迷你速览条仅 Windows 提供（macOS 开关隐藏且不创建窗口）。macOS 可用托盘 + 全局快捷键满足日常唤起。</p>
+      <h4>Q6：重装系统 / 换电脑后历史消息还在吗？</h4>
+      <p>不在——数据在本地应用目录，不随账号云端同步。请用第 18 章方法提前备份 <code>aif_client.db</code>；迁移后覆盖回新机器的对应目录即可找回（会话需重新登录）。</p>
+      <h4>Q7：右键「上传到协作空间」在哪里？</h4>
+      <p>需先在设置开启「资源管理器右键上传菜单」（仅 Windows）；Win11 在文件右键「显示更多选项」二级菜单中。上传目标为网盘页上次使用的目录。</p>
+      <hr />
+      <p class="small">本手册基于巨鹏软件客户端（Tauri 2）实际功能编写，适用于 Windows 与 macOS 桌面端。如功能随版本更新变化，以软件实际界面为准。</p>
+    </section>
+
+    <footer>巨鹏软件客户端 · 使用手册 · 桌面端（Windows / macOS）</footer>
+  </main>
+</div>
+</body>
+</html>

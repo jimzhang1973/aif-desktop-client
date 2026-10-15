@@ -641,7 +641,11 @@ input:focus, select:focus { border-color: var(--accent); }
 /* 「显示导航栏名称」开关关闭（默认）：隐藏全部功能名称，只留图标 */
 .sidenav.hide-labels .nav-label { display: none; }
 .nav-btn:hover { color: var(--accent); background: var(--accent-weak); }
-.nav-btn.nav-bottom { margin-top: auto; }
+.nav-btn.nav-bottom { margin-top: 0; }
+/* 帮助按钮：mini 模式由它吃掉剩余空间，将「帮助 + 我的」归底成组，与上方功能按钮（助手等）拉开间距；
+   full 模式折叠按钮已在上方占位，帮助只需紧贴「我的」即可，无需额外归底 */
+.nav-help { margin-top: auto; }
+.panel.mode-full .nav-help { margin-top: 0; }
 /* 双态图标：未选中=黑白框线（idle），选中=彩色实底（active），复用底部导航图标资产 */
 .nav-btn .nav-ico { display: none; align-items: center; justify-content: center; }
 .nav-btn .nav-ico.idle { display: flex; }
@@ -734,7 +738,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .collapse-btn { display: none; }
 .panel.mode-full .collapse-btn { display: flex; }
 /* 贴底放置：全屏时由折叠按钮吃掉剩余空间（margin-top:auto），「我的」紧随其下；
-   mini 模式折叠按钮隐藏，「我的」靠自身 auto 归底 */
+   mini 模式折叠按钮隐藏，改由帮助按钮 margin-top:auto 将「帮助 + 我的」归底成组，与上方功能按钮拉开间距 */
 .collapse-btn { margin-top: auto; }
 .panel.mode-full .nav-btn.nav-bottom { margin-top: 0; }
 .panel.mode-full.list-collapsed .content { display: none; }
@@ -1078,7 +1082,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-tree-item.is-file .tname { font-weight: 400; color: var(--text-2, #444); }
 /* 工具条（第一行）+ 空间选择行（第二行）：工具栏位于下拉菜单上面 */
 /* 工具栏行加底纹，与树区/空间行区分，加强辨识度（暗色用半透明白） */
-.disk-bar { display: flex; align-items: center; gap: 2px; padding: 8px 10px 4px; background: var(--hover, rgba(0, 0, 0, .045)); border-bottom: 1px solid var(--border); }
+.disk-bar { display: flex; align-items: center; gap: 3px; padding: 8px 10px 4px; background: var(--hover, rgba(0, 0, 0, .045)); border-bottom: 1px solid var(--border); }
 .dark .disk-bar { background: rgba(255, 255, 255, .05); }
 .disk-spacerow { display: flex; align-items: center; gap: 8px; padding: 4px 10px 8px; border-bottom: 1px solid var(--border); }
 .disk-spacerow .disk-select { margin: 0; width: 260px; flex: none; }
@@ -1142,8 +1146,9 @@ input:focus, select:focus { border-color: var(--accent); }
 .sr-local { font-size: 12px; color: var(--text-2, #666); }
 .sr-local, .sr-path { min-width: 0; }
 .sr-line .sr-path { flex: 1; }
-.sr-btns { display: flex; gap: 6px; }
+.sr-btns { display: flex; gap: 6px; align-items: center; }
 .sr-btns .disk-btn { padding: 2px 8px; font-size: 11.5px; }
+.sr-note { font-size: 11px; color: var(--text-3, #999); line-height: 1.4; }
 .sr-del:hover { color: #dc2626; border-color: #fca5a5; }
 .sync-foot { padding: 8px 2px 2px; font-size: 11.5px; color: var(--text-3, #999); }
 /* 同步抽屉页签（配置 / 日志） */

@@ -928,7 +928,7 @@ function drawCal(): void {
       const c = counts.get(k) || 0;
       html += `<button class="cal-cell cal-wk${k === calSel ? " sel" : ""}${k === todayK ? " today" : ""}" data-k="${k}">
         <span class="cal-day">${d.getMonth() + 1}/${d.getDate()} 周${"日一二三四五六"[d.getDay()]}</span>
-        <span class="cal-count${c ? "" : " zero"}">${c} 条</span></button>`;
+        <span class="cal-count${c ? "" : " zero"}">${c}</span></button>`;
     }
   } else {
     const k = calKey(calAnchor);
@@ -936,7 +936,7 @@ function drawCal(): void {
     title.textContent = `${k} · ${counts.get(k) || 0} 条`;
     html = `<div class="cal-daycard${counts.get(k) ? " has" : ""}" data-k="${k}">
       <span class="cal-day">${calAnchor.getDate()} 日</span>
-      <span class="cal-count${counts.get(k) ? "" : " zero"}">${counts.get(k) || 0} 条事件</span></div>`;
+      <span class="cal-count${counts.get(k) ? "" : " zero"}">${counts.get(k) || 0}</span></div>`;
   }
   grid.innerHTML = html;
   grid.querySelectorAll<HTMLElement>("[data-k]").forEach((el) =>
@@ -951,7 +951,10 @@ function drawCal(): void {
 function calDrawDetail(): void {
   const box = document.getElementById("cal-detail");
   if (!box) return;
-  const items = calMsgCache.filter((m) => calKey(calParse(m.time_str)!) === calSel);
+  // 明细按时间先后（升序）排列——三种视图通用
+  const items = calMsgCache
+    .filter((m) => calKey(calParse(m.time_str)!) === calSel)
+    .sort((a, b) => calParse(a.time_str)!.getTime() - calParse(b.time_str)!.getTime());
   const d = calParse(calSel);
   const head = d
     ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} 明细（${items.length}）`
@@ -1486,6 +1489,15 @@ void on<string[]>("disk-upload-request", (paths) => {
     const last = diskLastTarget();
     const pid = await api.diskPersonalSpaceId().catch(() => "");
     if (last && pid && last.spaceId === pid) {
+      // 写权限前置检查（个人空间通常可写；检查失败不阻塞，交由服务端兜底）
+      try {
+        if (!(await api.diskSpaceCanWrite(last.spaceId))) {
+          toast("个人空间无写权限，已取消自动上传");
+          return;
+        }
+      } catch {
+        /* 忽略 */
+      }
       toast(`开始上传 ${paths.length} 个文件到「${last.name}」`);
       try {
         await api.diskUploadFiles(last.spaceId, last.subjectId, paths);
@@ -1807,7 +1819,9 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     skippedNoDir: 0,
     errors: [],
   };
-  const tree = await api.diskTree(r.spaceId);
+  // 关键：diskTree 只回根目录清单（扫描恒为空 → 同步数全 0 的根因）；
+  // findTreeByNodeId(规则目录) 返回「全部 subject + 该目录子树下的文件」，一次调用即全子树
+  const tree = await api.diskNodes(r.spaceId, r.subjectId, "subject");
   const { files, dirs, dirRels } = diskSyncCloudScan(tree, r.subjectId);
   const fpAll = syncFpLoad();
   const fp: SyncFp = fpAll[r.id] || { up: {}, dl: {} };
@@ -1853,6 +1867,21 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   }
 
   // ---------- 本地 → 云 ----------
+  // 写权限前置检查：无写权限 → 整段跳过上传（云→本地下载为只读，不受影响）
+  let canWrite = true;
+  try {
+    canWrite = await api.diskSpaceCanWrite(r.spaceId);
+  } catch {
+    canWrite = true; // 检查失败不阻塞，交由服务端兜底
+  }
+  if (!canWrite) {
+    entry.errors.push("空间无写权限：本轮跳过「本地→云」上传（云→本地下载不受影响）");
+    diskLog(`${logTag}：空间无写权限，跳过上传（下载不受影响）`, false);
+    fpAll[r.id] = fp;
+    syncFpPersist(fpAll);
+    if (!dlItems.length) diskLog(`${logTag}：无变更`, true);
+    return entry;
+  }
   const locals = await api.diskLocalScan(r.localDir);
   // 同名登记：FILE 用真实文件名；在线文档同时登记「带导出后缀名」与「原始名」，
   // 命中在线文档的一律禁止上传/替换（在线文档只下载，云端只能在线上创建和编辑）
@@ -2621,23 +2650,32 @@ const diskEditing = new Map<string, DiskEditingEnt>();
 
 const DISK_OFFICE_EXTS = ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "wps"];
 
+/** 小菜单按钮图标（stroke=currentColor，随配色着色） */
+const DFM_ICONS = {
+  open: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 13v6H5V5h6"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>`,
+  pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.2-4.2L16 5l3 3L8.2 18.8 4 20z"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6"/><path d="m6 11 6-6 6 6"/><path d="M5 21h14"/></svg>`,
+};
+
 /** 点击文件行弹出的屏幕小菜单（fixed 定位，点击外部/Esc 关闭）：
- *  在线文档 → 在线打开；FILE 附件 → 在线查看（+MD 编辑 / Office 只读与编辑回传） */
+ *  在线文档 → 在线打开；FILE 附件 → 在线查看（+MD 编辑 / Office 只读与编辑回传）；
+ *  按钮彩色（图标 + 左侧色条 + hover 染色） */
 function diskFileMenu(node: DiskNode, x: number, y: number): void {
   diskFileMenuClose();
   const disp = diskFileDisplay(node);
   const isFile = node.nodeType === "article" && node.subtype === "FILE";
   const isMd = isFile && (disp.ext === "md" || disp.ext === "markdown");
   const isOffice = isFile && DISK_OFFICE_EXTS.includes(disp.ext);
-  const btns: { act: string; label: string; title: string }[] = [];
+  const btns: { act: string; label: string; title: string; icon: string; color: string }[] = [];
   if (!isFile) {
-    btns.push({ act: "open", label: "在线文档，点击打开", title: "通过 webview 打开 B/S 在线查看页" });
+    btns.push({ act: "open", label: "在线文档，点击打开", title: "通过 webview 打开 B/S 在线查看页", icon: DFM_ICONS.open, color: "#8b5cf6" });
   } else {
-    btns.push({ act: "open", label: "在线查看", title: "通过 webview 打开 B/S 详情页" });
-    if (isMd) btns.push({ act: "md", label: "编辑MarkDown文件", title: "内置本地 MD 编辑器，改完上传网盘替换" });
+    btns.push({ act: "open", label: "在线查看", title: "通过 webview 打开 B/S 详情页", icon: DFM_ICONS.open, color: "#0ea5e9" });
+    if (isMd) btns.push({ act: "md", label: "编辑MarkDown文件", title: "内置本地 MD 编辑器，改完上传网盘替换", icon: DFM_ICONS.pencil, color: "#10b981" });
     if (isOffice) {
-      btns.push({ act: "ro", label: "本地只读查看", title: "下载到本地并设只读，用本机关联程序打开（不回传）" });
-      btns.push({ act: "edit", label: "本地编辑后上传", title: "下载后用本机关联程序编辑；关闭后自动比对 mtime 回传" });
+      btns.push({ act: "ro", label: "本地只读查看", title: "下载到本地并设只读，用本机关联程序打开（不回传）", icon: DFM_ICONS.eye, color: "#64748b" });
+      btns.push({ act: "edit", label: "本地编辑后上传", title: "下载后用本机关联程序编辑；关闭后自动比对 mtime 回传", icon: DFM_ICONS.upload, color: "#f59e0b" });
     }
   }
   const menu = document.createElement("div");
@@ -2645,7 +2683,10 @@ function diskFileMenu(node: DiskNode, x: number, y: number): void {
   menu.innerHTML =
     `<div class="dfm-title" title="${esc(disp.name)}">${esc(disp.name)}</div>` +
     btns
-      .map((b) => `<button class="dfm-btn" data-act="${b.act}" title="${b.title}">${esc(b.label)}</button>`)
+      .map(
+        (b) =>
+          `<button class="dfm-btn" data-act="${b.act}" style="--mc:${b.color}" title="${b.title}"><span class="dfm-ico" style="color:${b.color}">${b.icon}</span>${esc(b.label)}</button>`,
+      )
       .join("");
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
@@ -2818,6 +2859,15 @@ async function diskEditUploadAfterCheck(articleId: string, name: string, path: s
   const ent = diskEditing.get(articleId);
   const spaceId = ent?.spaceId || diskSt.spaceId;
   const subjectId = ent?.subjectId || diskParentId(diskSt.flat.get(articleId)!);
+  // 写权限前置检查：无写权限不能回传（编辑状态保留，用户可取消修改）
+  try {
+    if (!(await api.diskSpaceCanWrite(spaceId))) {
+      toast("该空间无写权限，不能回传编辑内容");
+      return;
+    }
+  } catch {
+    /* 权限检查失败不阻塞，交由服务端兜底 */
+  }
   // 冲突检查：编辑期间的云端版本 vs 下载时版本
   let latest = 0;
   try {
@@ -3140,6 +3190,14 @@ async function diskPickDir(): Promise<string> {
 
 /** 上传到勾选的目标目录（记忆为该空间的默认目标；文件来源：右键带入 / 文件对话框） */
 async function diskUploadTo(subject: DiskNode): Promise<void> {
+  // 写权限前置检查：无写权限直接拦截（检查失败不阻塞，交由服务端兜底）
+  try {
+    if (!(await api.diskSpaceCanWrite(diskSt.spaceId))) {
+      return toast("该空间无写权限，不能上传文件");
+    }
+  } catch {
+    /* 权限检查失败不阻塞 */
+  }
   const paths = await diskPickFiles();
   if (!paths.length) return;
   diskUploadSubjectId = subject.id;

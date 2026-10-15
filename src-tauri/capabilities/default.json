@@ -94,6 +94,7 @@
       "allow-disk-file-text",
       "allow-disk-local-mkdir",
       "allow-disk-local-scan",
+      "allow-disk-space-can-write",
       "allow-disk-nodes",
       "allow-disk-personal-space-id",
       "allow-disk-register-context-menu",

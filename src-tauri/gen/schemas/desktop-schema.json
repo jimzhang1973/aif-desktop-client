@@ -315,6 +315,12 @@
           "markdownDescription": "Enables the disk_register_context_menu command without any pre-configured scope."
         },
         {
+          "description": "Enables the disk_space_can_write command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-disk-space-can-write",
+          "markdownDescription": "Enables the disk_space_can_write command without any pre-configured scope."
+        },
+        {
           "description": "Enables the disk_tree command without any pre-configured scope.",
           "type": "string",
           "const": "allow-disk-tree",
@@ -787,6 +793,12 @@
           "type": "string",
           "const": "deny-disk-register-context-menu",
           "markdownDescription": "Denies the disk_register_context_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the disk_space_can_write command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-disk-space-can-write",
+          "markdownDescription": "Denies the disk_space_can_write command without any pre-configured scope."
         },
         {
           "description": "Denies the disk_tree command without any pre-configured scope.",

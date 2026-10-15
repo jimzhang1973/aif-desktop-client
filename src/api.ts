@@ -268,6 +268,8 @@ export const _apiRaw = {
   diskLocalScan: (dir: string) => invoke<DiskLocalFile[]>("disk_local_scan", { dir }),
   /** 本地建目录（含多级，幂等）：同步「云→本地」方向镜像云端子目录（含空目录） */
   diskLocalMkdir: (dir: string) => invoke<void>("disk_local_mkdir", { dir }),
+  /** 空间写权限（B/S 空间首页 isEdited 同源判定，10 分钟缓存） */
+  diskSpaceCanWrite: (spaceId: string) => invoke<boolean>("disk_space_can_write", { spaceId }),
   // 本地编辑支持：编辑暂存目录 / 文本读写（MD 编辑器）/ 同目录另存副本 / 拉起编辑器+锁监视
   diskEditDir: () => invoke<string>("disk_edit_dir"),
   diskFileText: (path: string, content?: string) =>

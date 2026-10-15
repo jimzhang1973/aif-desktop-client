@@ -1502,3 +1502,58 @@ pub fn disk_local_mkdir(dir: String) -> Result<(), String> {
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())
 }
+
+// ---------- 空间写权限（上传/同步推送前置检查） ----------
+
+/// 写权限缓存：space_id → (canWrite, 时刻)，TTL 10 分钟
+static CAN_WRITE_CACHE: std::sync::OnceLock<Mutex<HashMap<String, (bool, std::time::Instant)>>> =
+    std::sync::OnceLock::new();
+const CAN_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// 空间写权限检查（与 B/S 同源）：空间首页 nonlogin/knowledge/space/home.htm?id=<spaceId>
+/// 服务端按当前用户渲染内嵌变量 `var isEdited = 'true'|'false'`，B/S 前端即以此控制
+/// 上传/新建/右键菜单的显隐——取该字面量作为写权限结论（2026-10-15 实测：个人空间 true）。
+#[tauri::command]
+pub async fn disk_space_can_write(
+    state: State<'_, std::sync::Arc<AppState>>,
+    space_id: String,
+) -> Result<bool, String> {
+    if space_id.trim().is_empty() {
+        return Err("spaceId 为空".into());
+    }
+    let cache = CAN_WRITE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(map) = cache.lock() {
+        if let Some((v, at)) = map.get(&space_id) {
+            if at.elapsed() < CAN_WRITE_TTL {
+                return Ok(*v);
+            }
+        }
+    }
+    let (base, root) = base_root(&state);
+    let session = session_of(&state)?;
+    let client = state.client.clone();
+    let url = format!("{base}/{root}/nonlogin/knowledge/space/home.htm?id={space_id}");
+    let resp = client
+        .get(&url)
+        .header("Cookie", &session)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("空间首页请求失败: {e}（会话可能已过期）"))?;
+    let html = resp.text().await.map_err(|e| e.to_string())?;
+    // var isEdited = 'true' || 'false' —— 服务端把真实值渲染在第一个引号字面量里
+    let mut can = false;
+    if let Some(i) = html.find("isEdited") {
+        let rest = &html[i..];
+        if let Some(q1) = rest.find('\'') {
+            if let Some(q2) = rest[q1 + 1..].find('\'') {
+                can = &rest[q1 + 1..q1 + 1 + q2] == "true";
+            }
+        }
+    }
+    if let Ok(mut map) = cache.lock() {
+        map.insert(space_id.clone(), (can, std::time::Instant::now()));
+    }
+    Ok(can)
+}

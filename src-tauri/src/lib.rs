@@ -144,6 +144,7 @@ pub fn run() {
             disk::disk_file_copy,
             disk::disk_file_text,
             disk::disk_local_mkdir,
+            disk::disk_space_can_write,
             disk::disk_local_scan,
             disk::disk_nodes,
             disk::disk_personal_space_id,

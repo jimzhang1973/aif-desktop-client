@@ -1092,6 +1092,8 @@ input:focus, select:focus { border-color: var(--accent); }
 /* 传输管理器抽屉（类浏览器下载管理器） */
 .disk-btn .badge { display: none; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px; border-radius: 8px; background: #dc2626; color: #fff; font-size: 10px; line-height: 16px; text-align: center; vertical-align: middle; }
 .disk-drawer { position: fixed; top: 0; right: 0; height: 100%; width: 289px; max-width: 86vw; background: var(--bg, #fff); border-left: 1px solid var(--border); box-shadow: -4px 0 16px rgba(0, 0, 0, .12); transform: translateX(100%); transition: transform .2s ease; z-index: 60; display: flex; flex-direction: column; user-select: text; }
+/* 全屏模式：抽屉锚定内容列（网盘面板）右缘，不进入右侧 webview 领空（原生标签永远盖住 DOM） */
+.panel.mode-full .disk-drawer { right: auto; }
 .dark .disk-drawer { background: var(--bg, #1e1e1e); }
 .disk-drawer.open { transform: none; }
 .tf-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }

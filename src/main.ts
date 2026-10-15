@@ -215,6 +215,7 @@ function setListCollapsed(collapsed: boolean) {
   }
   if (tabs.length > 0) {
     window.setTimeout(() => {
+      diskDrawerPlace(); // 列表折叠改变内容列位置，抽屉跟随
       const rect = paneRect();
       if (rect) void api.tabBounds(rect.x, rect.y, rect.w, rect.h).catch(() => {});
     }, 160); // 等 CSS 过渡结束再上报，避免标签视口取到过渡中的中间尺寸
@@ -294,6 +295,7 @@ function bindPaneResize() {
   let timer = 0;
   window.addEventListener("resize", () => {
     dumpLayout("resize");
+    diskDrawerPlace(); // 全屏模式抽屉打开期间跟随内容列位置
     if (entryDlgOpen) return; // 入口切换弹窗期间标签被临时隐藏，暂停边界同步
     if (layoutMode !== "full" || tabs.length === 0) return;
     window.clearTimeout(timer);
@@ -1107,6 +1109,27 @@ function diskTransferBadge(): void {
   el.textContent = n ? String(n) : "";
   el.style.display = n ? "" : "none";
 }
+/** 全屏模式下把日志抽屉锚定到内容列（网盘面板）右缘：
+ *  fixed+right:0 会落在 web-pane（原生 webview 领空）被盖住，
+ *  故按 #content 的视口 rect 设置 left/top/height；mini 模式清除回退窗口右缘。 */
+function diskDrawerPlace(): void {
+  const drawer = document.getElementById("disk-drawer");
+  if (!drawer) return;
+  const content = document.getElementById("content");
+  if (layoutMode === "full" && content) {
+    const r = content.getBoundingClientRect();
+    if (r.width >= 40 && r.height >= 40) {
+      drawer.style.left = `${Math.round(r.left)}px`;
+      drawer.style.top = `${Math.round(r.top)}px`;
+      drawer.style.height = `${Math.round(r.height)}px`;
+      return;
+    }
+  }
+  drawer.style.left = "";
+  drawer.style.top = "";
+  drawer.style.height = "";
+}
+
 function diskTransferRender(): void {
   const el = document.getElementById("disk-transfer-list");
   if (!el) return;
@@ -1303,7 +1326,10 @@ async function renderDisk(content: HTMLElement) {
   document.getElementById("disk-transfer")!.addEventListener("click", (e) => {
     e.stopPropagation(); // 不触发页面点击关闭，避免与本按钮的开关冲突
     drawer.classList.toggle("open");
-    if (drawer.classList.contains("open")) diskTransferRender();
+    if (drawer.classList.contains("open")) {
+      diskDrawerPlace(); // 全屏模式先按内容列定位，再渲染
+      diskTransferRender();
+    }
   });
   document.getElementById("disk-drawer-close")!.addEventListener("click", () =>
     drawer.classList.remove("open"),

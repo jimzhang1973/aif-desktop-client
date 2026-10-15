@@ -567,7 +567,9 @@ struct UploadResp {
     mime_type: String,
 }
 
-/// 批量上传本地文件到指定空间/目录（两阶段：先传文件再 fileSave 落库，20 个/批）
+/// 批量上传本地文件到指定空间/目录（两阶段：先传文件再落库，20 个/批）。
+/// 同名处理：目标目录下已存在同名 FILE 型附件时走 fileReplace（保文章 id 替换文件），
+/// 否则按新建 fileSave 落库——不产生重复附件。
 #[tauri::command]
 pub fn disk_upload_files(
     app: AppHandle,
@@ -583,8 +585,32 @@ pub fn disk_upload_files(
     let session = session_of(&state)?;
     let client = state.client.clone();
     tauri::async_runtime::spawn(async move {
+        // 预查目标目录现有 FILE 附件（name → article id），用于同名替换判定
+        let mut existing: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let tree_url = format!("{base}/{root}/nonlogin/knowledge/space/findTreeByNodeId.htm");
+        if let Ok(val) = post_form(
+            &client,
+            tree_url,
+            &session,
+            &[
+                ("id", subject_id.as_str()),
+                ("type", "subject"),
+                ("spaceId", space_id.as_str()),
+            ],
+        )
+        .await
+        {
+            for n in parse_nodes(&unwrap_data(val)) {
+                if n.node_type == "article" && n.subtype == "FILE" {
+                    existing.entry(n.name.trim().to_lowercase()).or_insert(n.id);
+                }
+            }
+        }
+
         let total = paths.len() as u32;
-        let mut refs: Vec<UploadResp> = Vec::new();
+        // (上传引用, 同名待替换的文章 id)
+        let mut refs: Vec<(UploadResp, Option<String>)> = Vec::new();
         for (i, p) in paths.iter().enumerate() {
             let done = (i + 1) as u32;
             let path = PathBuf::from(p);
@@ -613,6 +639,7 @@ pub fn disk_upload_files(
                     continue;
                 }
             }
+            let replace_id = existing.get(&fname.trim().to_lowercase()).cloned();
             let url = format!(
                 "{base}/{root}/fileupload/uploadfile.htm?savePath=/knowledge/space&secret=false"
             );
@@ -637,6 +664,11 @@ pub fn disk_upload_files(
                         serde_json::from_value::<UploadResp>(v).map_err(|e| e.to_string())
                     }) {
                         Ok(up) => {
+                            let note = if replace_id.is_some() {
+                                "已上传，同名将替换"
+                            } else {
+                                "已上传，待登记"
+                            };
                             let _ = app.emit(
                                 "disk-progress",
                                 DiskProgress {
@@ -645,10 +677,10 @@ pub fn disk_upload_files(
                                     done,
                                     total,
                                     ok: true,
-                                    msg: "已上传，待登记".into(),
+                                    msg: note.into(),
                                 },
                             );
-                            refs.push(up);
+                            refs.push((up, replace_id));
                         }
                         Err(e) => {
                             let _ =
@@ -667,8 +699,90 @@ pub fn disk_upload_files(
                 }
             }
         }
-        // 第二阶段：fileSave 分批落库（≤20/批）
-        for chunk in refs.chunks(FILESAVE_BATCH) {
+        // 第二阶段落库：同名 → fileReplace（保 id 替换，逐个）；其余 → fileSave 分批（≤20/批）
+        let mut fresh: Vec<UploadResp> = Vec::new();
+        for (r, replace_id) in refs {
+            match replace_id {
+                Some(aid) => {
+                    let files = serde_json::json!([{
+                        "annexId": r.id,
+                        "annexName": r.original_file_name,
+                        "annexType": r.file_type,
+                        "annexSize": r.file_size,
+                        "annexPath": r.download_url,
+                        "annexMimeType": r.mime_type,
+                    }]);
+                    let payload = serde_json::json!({ "files": files });
+                    let data_str = payload.to_string();
+                    let url = format!("{base}/{root}/editorask/knowledge/article/fileReplace.htm");
+                    match client
+                        .post(&url)
+                        .header("Cookie", &session)
+                        .form(&[
+                            ("id", aid.as_str()),
+                            ("data", data_str.as_str()),
+                        ])
+                        .send()
+                        .await
+                    {
+                        Ok(resp) if resp.status().is_success() => {
+                            let text = resp.text().await.unwrap_or_default();
+                            let code = decode_flex(&text)
+                                .ok()
+                                .and_then(|v| v.get("code").and_then(|c| c.as_i64()))
+                                .unwrap_or(0);
+                            if code != 200 {
+                                let msg = decode_flex(&text)
+                                    .ok()
+                                    .and_then(|v| {
+                                        v.get("msg").and_then(|m| m.as_str()).map(String::from)
+                                    })
+                                    .unwrap_or_else(|| "替换失败".into());
+                                let _ = app.emit(
+                                    "disk-progress",
+                                    DiskProgress {
+                                        kind: "upload".into(),
+                                        file: r.original_file_name,
+                                        done: total,
+                                        total,
+                                        ok: false,
+                                        msg,
+                                    },
+                                );
+                            }
+                        }
+                        Ok(resp) => {
+                            let _ = app.emit(
+                                "disk-progress",
+                                DiskProgress {
+                                    kind: "upload".into(),
+                                    file: r.original_file_name,
+                                    done: total,
+                                    total,
+                                    ok: false,
+                                    msg: format!("替换 HTTP {}", resp.status().as_u16()),
+                                },
+                            );
+                        }
+                        Err(e) => {
+                            let _ = app.emit(
+                                "disk-progress",
+                                DiskProgress {
+                                    kind: "upload".into(),
+                                    file: r.original_file_name,
+                                    done: total,
+                                    total,
+                                    ok: false,
+                                    msg: e.to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                None => fresh.push(r),
+            }
+        }
+        for chunk in fresh.chunks(FILESAVE_BATCH) {
             let files: Vec<serde_json::Value> = chunk
                 .iter()
                 .map(|r| {

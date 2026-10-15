@@ -36,10 +36,12 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tauri-plugin-log = "2"
 
-# 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）；MessageBeep 通知提示音
+# 伪最大化布局：读窗口所在显示器的工作区（排除任务栏）；MessageBeep 通知提示音；
+# WinRT toast 直发（绕过通知插件在 dev 模式不设置 AUMID 落到 PowerShell 通道的问题）
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Diagnostics_Debug"] }
 keyring = { version = "3", features = ["windows-native"] }
+tauri-winrt-notification = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }

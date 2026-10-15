@@ -584,7 +584,14 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
     crate::tray::flash(app);
 }
 
-/// 桌面通知发送（登记 notify_urls 供点击反查）。pub(crate)：commands::fire_snooze 复用。
+/// 桌面通知发送（登记 notify_urls 供点击反查）。
+///
+/// Windows 直发 WinRT toast（AUMID = 应用标识符）：
+/// tauri-plugin-notification 在 dev（target\debug|release）下**不设置 AUMID**
+///（其 desktop.rs:492 判定），notify-rust 落到 PowerShell AUMID 通道——
+/// 本机实测该通道 toast 静默丢失（2026-10-13 起通知中心再无记录，而安装版 AUMID 通道已实证可达）。
+/// 直发让 dev 与安装版行为一致；失败时回退插件路径兜底并留痕。
+/// pub(crate)：commands::fire_snooze 复用。
 pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &str) {
     // 登记标题→URL 供通知点击（tap）反查；FIFO 上限 20，防止常驻膨胀
     {
@@ -595,20 +602,55 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
         }
         q.push_back((title.to_string(), url.to_string()));
     }
-    // tauri-plugin-notification 2.x：通过 NotificationExt trait 获取 builder
-    if let Err(e) = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
+    #[cfg(windows)]
     {
-        // 系统通知发送失败（如 AUMID 未注册/通知服务异常）必须留痕，否则表现为「静默无弹窗」
-        log::warn!("[notify] 系统通知发送失败：{title} | {e}");
+        let aumid = app.config().identifier.clone();
+        let app2 = app.clone();
+        let title2 = title.to_string();
+        let result = tauri_winrt_notification::Toast::new(&aumid)
+            .title(title)
+            .text2(body)
+            .on_activated(move |_| {
+                // 点击 toast：按标题反查 URL → 置前主窗并跳转（与插件 on_action tap 同语义）
+                let url = {
+                    let st = app2.state::<AppState>();
+                    let mut q = st.notify_urls.lock().unwrap();
+                    match q.iter().rposition(|(t, _)| *t == title2) {
+                        Some(i) => q.remove(i).unwrap().1,
+                        None => String::new(),
+                    }
+                };
+                if let Some(w) = app2.get_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+                if !url.is_empty() {
+                    let _ = app2.emit("open-message-url", url);
+                }
+                Ok(())
+            })
+            .show();
+        if let Err(e) = result {
+            // AUMID 未解析/通知服务异常等：留痕后走插件路径兜底
+            log::warn!("[notify] WinRT toast 直发失败（AUMID={aumid}）：{title} | {e}");
+            fallback_notify(app, title, body);
+        }
     }
+    #[cfg(not(windows))]
+    fallback_notify(app, title, body);
     // 提示音：弹窗 + 声音（Windows 用 MessageBeep 播系统「星号」提示音，立即返回不阻塞）
     #[cfg(windows)]
     unsafe {
         windows_sys::Win32::System::Diagnostics::Debug::MessageBeep(0x0000_0040); // MB_ICONASTERISK
+    }
+}
+
+/// 插件路径兜底（非 Windows / WinRT 直发失败时走这里）
+#[cfg_attr(windows, allow(dead_code))]
+fn fallback_notify(app: &AppHandle, title: &str, body: &str) {
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        // 系统通知发送失败（如 AUMID 未注册/通知服务异常）必须留痕，否则表现为「静默无弹窗」
+        log::warn!("[notify] 系统通知发送失败：{title} | {e}");
     }
 }

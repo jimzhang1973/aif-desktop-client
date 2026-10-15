@@ -1026,24 +1026,18 @@ input:focus, select:focus { border-color: var(--accent); }
   white-space: nowrap;
 }
 
-/* ---------------- 稍后提醒（悬停时覆盖「消息类型」胶囊位置，琥珀色浮层） ----------------
- * 绝对定位盖在 .msg-cat-slot 之上，不占文档流空间——行高恒定不跳动。
- * 按钮自身悬停时「稍后」变形为两行「消息提醒」（宽度对齐 2 字/行，随槽位天然折行）。 */
+/* ---------------- 稍后提醒（悬停覆盖「消息类型」胶囊位，样式与类型胶囊完全一致） ----------------
+ * 绝对定位盖在 .msg-cat-slot 之上，不占文档流空间——行高恒定不跳动；
+ * 琥珀实底白字，「稍后/提醒」各占一行（catWrap 2+2 折行），移开鼠标即消失。 */
 .snooze-btn {
   display: none; position: absolute; left: 0; top: 0; width: 100%; min-height: 100%;
   align-items: center; justify-content: center;
-  border: 1px solid #f59e0b66; cursor: pointer;
-  font-size: var(--fs-xs); color: #b45309;
-  background: color-mix(in srgb, #f59e0b 10%, var(--bg, #fff));
-  border-radius: 999px;
-  font-family: inherit; line-height: 1.5; font-weight: 500;
-  z-index: 2; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+  border: none; cursor: pointer;
+  font-size: var(--fs-xs); font-weight: 500; color: #fff; background: #f59e0b;
+  border-radius: var(--radius-s); padding: 2px 7px; line-height: 1.4;
+  font-family: inherit; z-index: 2;
 }
 .msg-row:hover .snooze-btn { display: flex; }
-.sb-long { display: none; width: 2em; text-align: center; }
-.snooze-btn:hover { color: #fff; background: #f59e0b; border-color: #f59e0b; }
-.snooze-btn:hover .sb-short { display: none; }
-.snooze-btn:hover .sb-long { display: block; }
 
 /* ---------------- Ctrl+K 命令面板 ---------------- */
 .palette-mask {

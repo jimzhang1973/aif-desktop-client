@@ -3911,7 +3911,7 @@ function msgCardHtml(m: HistoryMessage): string {
           <div class="msg-hm">${esc(fmtRelTime(m.time_str))}</div>
           <div class="msg-cat-slot">
             <div class="msg-cat" style="color:${ty.color};background:${ty.color}14" title="${esc(ty.label)}">${catWrap(ty.label)}</div>
-            <button class="snooze-btn" data-snooze type="button" title="30 分钟后提醒我"><span class="sb-short">稍后</span><span class="sb-long">消息提醒</span></button>
+            <button class="snooze-btn" data-snooze type="button" title="30 分钟后提醒我">${catWrap("稍后提醒")}</button>
           </div>
         </div>
         <div class="msg-main">

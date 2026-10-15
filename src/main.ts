@@ -2816,7 +2816,9 @@ function diskFileMenu(node: DiskNode, x: number, y: number, openEvent?: Event): 
       .join("") +
     (isFile && !isMd && !isOffice
       ? `<div class="dfm-note">该类型仅支持在线/本地查看，不支持编辑后自动上传</div>`
-      : "");
+      : isOffice
+        ? `<div class="dfm-note">本地编辑器编辑完成，关闭文档后才会自动上传</div>`
+        : "");
   document.body.appendChild(menu);
   const r = menu.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;

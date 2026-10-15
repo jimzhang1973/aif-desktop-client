@@ -505,8 +505,9 @@ fn notify_grouped(app: &AppHandle, items: &[NewMessage]) {
 }
 
 // ---------------- 每日定时摘要 ----------------
-// 每天到达设定时间后（60 分钟触发窗口，兼容最长 60 分钟的轮询间隔）推送一条汇总：
-// 未办结待办 N 件 + 今日新消息 M 条。当天只发一次（kv digest_last_date 记日期）。
+// 每天到达设定时间后推送一条汇总：未办结待办 N 件 + 今日新消息 M 条。
+// 触发窗口 = 设定时刻起至当天结束（程序在常规 60 分钟窗口内未运行时，当天启动/轮询后自动补发，
+// 标题带「（补发）」；当天只发一次，kv digest_last_date 记日期）。
 // 无跳转 URL，点击通知只唤起主面板（on_action 对空 URL 的处理）。
 fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
     let settings = state.settings.lock().unwrap().clone();
@@ -529,10 +530,11 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
     let (now_h, now_m) = local_hm();
     let now_min = now_h * 60 + now_m;
     let target = hh * 60 + mm;
-    // 触发窗口：目标时刻起 60 分钟内（now_min 恰好等于 target 也算，覆盖 [target, target+60)）
-    if now_min < target || now_min >= target + 60 {
+    // 触发窗口：到达目标时刻后当天任意时间（错过常规窗口 → 补发；当天 0 点前都允许）
+    if now_min < target {
         return;
     }
+    let late = now_min >= target + 60; // 超过常规 60 分钟窗口 → 标记补发
     let n = chrono::Local::now();
     let today = n.format("%Y-%m-%d").to_string();
     // 本地时区当日 0 点的 Unix 秒（今日新消息统计起点）
@@ -564,10 +566,13 @@ fn check_daily_digest(state: &Arc<AppState>, app: &AppHandle) {
         let conn = state.db.lock().unwrap();
         let _ = db::kv_set(&conn, "digest_last_date", &today);
     }
-    log::info!("[poll] 每日摘要：待办 {todo_cnt} 件，今日新消息 {msg_cnt} 条");
+    log::info!(
+        "[poll] 每日摘要{}：待办 {todo_cnt} 件，今日新消息 {msg_cnt} 条",
+        if late { "（补发）" } else { "" }
+    );
     show_notification(
         app,
-        "每日摘要",
+        if late { "每日摘要（补发）" } else { "每日摘要" },
         &format!("待办 {todo_cnt} 件未办结，今日新消息 {msg_cnt} 条"),
         "",
     );

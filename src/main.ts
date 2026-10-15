@@ -1618,8 +1618,9 @@ type SyncCfg = {
   /** 上次同步作业完成时间（epoch ms） */
   lastRun: number;
 };
-/** 同步指纹（按规则分桶） */
-type SyncFp = { up: Record<string, number>; dl: Record<string, number> };
+/** 同步指纹（按规则分桶）。up=上次上传/登记时本地 mtime(s)；dl=云端已知版本 updateTime(ms)；
+ *  lm=上次下载落盘后的本地 mtime(s)——两者皆备才能判定「双方都改过」（冲突检测）。 */
+type SyncFp = { up: Record<string, number>; dl: Record<string, number>; lm: Record<string, number> };
 
 let syncCfg: SyncCfg | null = null;
 let syncNextRunAt = 0;
@@ -1690,6 +1691,7 @@ type SyncLogEntry = {
   upFail: number;
   upFails: SyncFailItem[];
   upSkip?: number; // 同名在线文档跳过数（非失败：本地有改动但云端为在线文档，登记指纹后不再重复提示）
+  conflict?: number; // 双向修改冲突数（云端版本已存「云端冲突」副本，本地版覆盖云端）
   upSkipBig?: number; // 超 100MB 单文件上限跳过数（非失败：直接拦截不尝试，登记指纹后不再重复提示）
   skippedNoDir: number; // 云端无同名目录被跳过的本地文件数
   errors: string[]; // 规则级错误（如目录树拉取失败）
@@ -1892,7 +1894,8 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   const tree = await api.diskNodes(r.spaceId, r.subjectId, "subject");
   const { files, dirs, dirRels } = diskSyncCloudScan(tree, r.subjectId);
   const fpAll = syncFpLoad();
-  const fp: SyncFp = fpAll[r.id] || { up: {}, dl: {} };
+  const fp: SyncFp = fpAll[r.id] || { up: {}, dl: {}, lm: {} };
+  fp.lm ||= {}; // 旧版本指纹数据兼容
   const logTag = `同步「${r.subjectPath}」`;
 
   // ---------- 云 → 本地 ----------
@@ -1908,14 +1911,40 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
   const localMap = new Map(locals0.map((f) => [f.relPath.toLowerCase(), f]));
   const dlItems: DiskDlItem[] = [];
   const dlMarks: { rel: string; updateTime: number }[] = [];
+  const forceUp = new Set<string>(); // 冲突文件的本地键：本地版强制上传（绕过「云端更新」跳过规则）
+  const conflictKeys = new Set<string>(); // 冲突副本的本地键（下载成功后登记上传指纹，防止副本被回传云端）
+  let conflictCnt = 0;
   for (const { node, relDir, subtype, name } of files) {
     if (diskEditing.has(node.id)) continue; // 编辑中：同步跳过，避免与本地编辑回传抢写时序
     const rel = relDir ? `${relDir}/${name}` : name;
     const key = rel.toLowerCase();
     const local = localMap.get(key);
     if (local) {
-      // 指纹命中：上次下载后云端未变，或本文件正是本地上传的新版本 → 跳过
-      if (fp.dl[key] === node.updateTime || (fp.up[key] || 0) >= node.updateTime) continue;
+      const baseUpMs = (fp.up[key] || 0) * 1000; // 上次同步引擎处理时本地 mtime(s→ms)
+      const baseDl = fp.dl[key] || 0; // 云端已知版本（上次下载的 updateTime / 上次上传完成时刻）
+      const baseLmMs = (fp.lm[key] || 0) * 1000; // 上次下载落盘后的本地 mtime 基线
+      const localChanged = baseLmMs ? local.mtime * 1000 !== baseLmMs : baseUpMs !== 0 && local.mtime * 1000 !== baseUpMs;
+      const cloudChanged = baseDl > 0 && node.updateTime - baseDl > 3000; // 3s 容忍自身上传的服务端时钟偏移
+      // 双方都改过 = 真冲突（方案B，2026-10-15 用户拍板）：云端版本先存「云端冲突」副本，
+      // 本地版本强制上传覆盖云端——两边修改都保留，日志可追溯。仅 FILE 附件（在线文档只下载无冲突）
+      if (subtype === "FILE" && baseDl > 0 && cloudChanged && localChanged) {
+        const dot = name.lastIndexOf(".");
+        const stamp = (() => {
+          const d = new Date();
+          const p = (n: number) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+        })();
+        const copyName = dot > 0 ? `${name.slice(0, dot)}.云端冲突${stamp}${name.slice(dot)}` : `${name}.云端冲突${stamp}`;
+        const copyRel = relDir ? `${relDir}/${copyName}` : copyName;
+        dlItems.push({ articleId: node.id, name: copyName, relDir, subtype });
+        dlMarks.push({ rel: copyRel.toLowerCase(), updateTime: node.updateTime });
+        conflictKeys.add(copyRel.toLowerCase());
+        conflictCnt++;
+        forceUp.add(key);
+        continue;
+      }
+      // 指纹命中：上次下载后云端未变（含本地上传的版本），跳过
+      if (node.updateTime <= baseDl + 3000 || baseUpMs >= node.updateTime) continue;
       // 云端比本地新（且非本地上传的版本）→ 重新下载覆盖
       if (local.mtime * 1000 >= node.updateTime) continue;
     }
@@ -1927,8 +1956,29 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
     const task = diskTransferStart("download", `同步 ↓ ${r.subjectPath}`, dlItems.length, {}, true);
     diskLog(`${logTag}：云→本地下传 ${dlItems.length} 个文件`, true);
     const ok = await runDiskJob("download", () => api.diskDownloadFiles(dlItems, r.localDir, true));
-    if (ok) for (const m of dlMarks) fp.dl[m.rel] = m.updateTime;
-    else diskTransferFailStart(task.id, "同步下载未正常收尾");
+    if (ok) {
+      for (const m of dlMarks) fp.dl[m.rel] = m.updateTime;
+      // 下载完成后重扫本地：登记各文件落盘 mtime 作为本地基线（判定「本地后来改过」的依据）；
+      // 冲突副本同时登记上传指纹——副本不再作为新文件回传云端，用户主动改动副本才会同步
+      try {
+        const after = await api.diskLocalScan(r.localDir);
+        const mt = new Map(after.map((f) => [f.relPath.toLowerCase(), f.mtime] as const));
+        for (const m of dlMarks) {
+          const t = mt.get(m.rel);
+          if (t != null) fp.lm[m.rel] = t;
+        }
+        for (const ck of conflictKeys) {
+          const t = mt.get(ck);
+          if (t != null) fp.up[ck] = t;
+        }
+      } catch {
+        /* 重扫失败：基线缺失，下轮按时间戳兜底 */
+      }
+      if (conflictCnt) {
+        entry.conflict = conflictCnt;
+        diskLog(`${logTag}：检测到 ${conflictCnt} 个双向修改冲突，云端版本已存为「云端冲突」副本，本地版本将覆盖云端`, false);
+      }
+    } else diskTransferFailStart(task.id, "同步下载未正常收尾");
     const st = diskTaskStats(task.id);
     entry.dlOk = st.ok;
     entry.dlFail = st.fail;
@@ -2005,9 +2055,9 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
       fp.up[key] = f.mtime;
       continue;
     }
-    if (cloud && diskEditing.has(cloud.id)) continue; // 该云端文件正被本地编辑：跳过
-    if (cloud) {
-      if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新
+    if (cloud && !forceUp.has(key) && diskEditing.has(cloud.id)) continue; // 该云端文件正被本地编辑：跳过
+    if (cloud && !forceUp.has(key)) {
+      if (cloud.updateTime >= f.mtime * 1000) continue; // 云端同版本或更新（冲突文件例外：本地版强制上传）
     }
     if (!relDir) {
       // 根级文件直接归属规则目录
@@ -2053,8 +2103,14 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
       roSkipped += batch.length - st.ok - 1;
       continue;
     }
-    if (ok) for (const b of batch) fp.up[b.rel] = b.mtime;
-    else diskTransferFailStart(task.id, "同步上传未正常收尾");
+    if (ok) {
+      for (const b of batch) {
+        fp.up[b.rel] = b.mtime;
+        // 同时登记云端版本基线 = 上传完成时刻：下轮云→本地按 3s 容差识别「这就是我刚传的」，
+        // 不会把自己上传的文件又下载回来（原实现的秒/毫秒比较是死条件，上传后必多一次冗余下载）
+        fp.dl[b.rel] = Date.now();
+      }
+    } else diskTransferFailStart(task.id, "同步上传未正常收尾");
     entry.upOk += st.ok;
     entry.upFail += st.fail;
     entry.upFails.push(...st.fails);
@@ -2113,6 +2169,7 @@ function diskSyncRender(): void {
             <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
             <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
             ${e.upSkip ? `<span class="sl-dim" title="云端存在同名在线文档，不支持上传/替换；已登记，文件不再改动不会重复提示">跳过（同名在线文档）${e.upSkip}</span>` : ""}
+            ${e.conflict ? `<span class="sl-warn" title="双方都修改过：云端旧版本已存为「云端冲突」副本，本地版本覆盖云端">冲突（已生成云端冲突副本）${e.conflict}</span>` : ""}
             ${e.upSkipBig ? `<span class="sl-dim" title="超过单文件 100MB 上限，直接拦截不尝试上传；已登记，文件不再改动不会重复提示">跳过（超100MB）${e.upSkipBig}</span>` : ""}
             ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}
           </div>
@@ -4019,12 +4076,30 @@ async function fireDueSnoozes() {
   if (!due.length) return;
   snoozes = snoozes.filter((s) => s.at > now);
   persistSnoozes();
+  const expired: SnoozeItem[] = [];
   for (const s of due) {
-    if (now - s.at > 24 * 3600 * 1000) continue; // 超期 24h 丢弃
+    if (now - s.at > 24 * 3600 * 1000) {
+      expired.push(s); // 超期 24h：不逐条弹窗（避免打扰），并入汇总，绝不静默丢弃
+      continue;
+    }
     try {
       await api.fireSnooze(s.title, s.body, s.url);
-    } catch {
-      /* 通知失败忽略 */
+      console.info("[snooze] 补发提醒:", s.title);
+    } catch (e) {
+      console.warn("[snooze] 补发失败:", s.title, e);
+    }
+  }
+  if (expired.length) {
+    const titles = expired.slice(0, 3).map((s) => s.title).join("、");
+    try {
+      await api.fireSnooze(
+        "过期提醒汇总",
+        `${expired.length} 条提醒未按时送达：${titles}${expired.length > 3 ? " 等" : ""}`,
+        "",
+      );
+      console.info("[snooze] 过期汇总已发送:", expired.length, "条");
+    } catch (e) {
+      console.warn("[snooze] 过期汇总发送失败:", e);
     }
   }
 }

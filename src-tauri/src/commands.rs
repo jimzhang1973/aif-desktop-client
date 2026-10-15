@@ -3017,6 +3017,7 @@ pub fn trace_invoke(cmd: String, phase: String) {
 /// async：同步命令在主线程执行，通知插件调用不在主线程做，规避派发类挂起。
 #[tauri::command]
 pub async fn fire_snooze(app: AppHandle, title: String, body: String, url: String) {
+    log::info!("[snooze] 触发提醒：{title}（url={}）", if url.is_empty() { "无" } else { "有" });
     crate::poller::show_notification(&app, &title, &body, &url);
     // 前端兜底：系统 toast 可能被 Windows 勿扰/通知设置吞掉，应用内 toast 保底可见
     let _ = app.emit("snooze-fired", format!("{title}：{body}"));

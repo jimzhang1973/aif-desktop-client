@@ -617,39 +617,67 @@ pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str, url: &
     #[cfg(windows)]
     {
         let aumid = app.config().identifier.clone();
-        let app2 = app.clone();
-        let title2 = title.to_string();
-        let result = tauri_winrt_notification::Toast::new(&aumid)
-            .title(title)
-            .text2(body)
-            .on_activated(move |_| {
-                // 点击 toast：按标题反查 URL → 置前主窗并跳转（与插件 on_action tap 同语义）
-                let url = {
-                    let st = app2.state::<AppState>();
-                    let mut q = st.notify_urls.lock().unwrap();
-                    match q.iter().rposition(|(t, _)| *t == title2) {
-                        Some(i) => q.remove(i).unwrap().1,
-                        None => String::new(),
-                    }
-                };
-                if let Some(w) = app2.get_window("main") {
-                    let _ = w.show();
-                    let _ = w.unminimize();
-                    let _ = w.set_focus();
-                }
-                if !url.is_empty() {
-                    let _ = app2.emit("open-message-url", url);
-                }
-                Ok(())
-            })
-            .show();
-        match result {
-            Ok(()) => log::info!("[notify] WinRT toast 已发送：{title}"),
-            Err(e) => {
-                // AUMID 未解析/通知服务异常等：留痕后走插件路径兜底
-                log::warn!("[notify] WinRT toast 直发失败（AUMID={aumid}）：{title} | {e}");
-                fallback_notify(app, title, body);
+        let app_t = app.clone();
+        let title_t = title.to_string();
+        let body_t = body.to_string();
+        // 通知发送隔离到独立一次性线程（fail-isolated）：
+        // 2026-10-15 实证：在 tokio worker 线程直发 WinRT toast，该调用挂死/异常会把
+        // poll_once 连同整个轮询循环一起带走（症状：入库日志后 [notify] 永不打印，
+        // 闪/响/emit 全无，后续轮询停止）。独立线程保证最坏只损失这一条通知。
+        // 线程内先 CoInitializeEx(MTA)：tokio 线程未初始化 COM，WinRT 激活依赖它。
+        let spawned = std::thread::Builder::new().name("toast-send".into()).spawn(move || {
+            unsafe {
+                // 0x0=COINIT_MULTITHREADED；S_FALSE(已初始化)/RPC_E_CHANGED_MODE(模式冲突) 均忽略
+                windows_sys::Win32::System::Com::CoInitializeEx(
+                    std::ptr::null(),
+                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED as u32,
+                );
             }
+            log::info!("[notify] toast 线程就绪，开始发送：{title_t}");
+            let app_click = app_t.clone();
+            let title_click = title_t.clone();
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tauri_winrt_notification::Toast::new(&aumid)
+                    .title(&title_t)
+                    .text2(&body_t)
+                    .on_activated(move |_| {
+                        // 点击 toast：按标题反查 URL → 置前主窗并跳转（与插件 on_action tap 同语义）
+                        let url = {
+                            let st = app_click.state::<AppState>();
+                            let mut q = st.notify_urls.lock().unwrap();
+                            match q.iter().rposition(|(t, _)| *t == title_click) {
+                                Some(i) => q.remove(i).unwrap().1,
+                                None => String::new(),
+                            }
+                        };
+                        if let Some(w) = app_click.get_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                        if !url.is_empty() {
+                            let _ = app_click.emit("open-message-url", url);
+                        }
+                        Ok(())
+                    })
+                    .show()
+            }));
+            match r {
+                Ok(Ok(())) => log::info!("[notify] WinRT toast 已发送：{title_t}"),
+                Ok(Err(e)) => {
+                    // AUMID 未解析/通知服务异常等：留痕后走插件路径兜底
+                    log::warn!("[notify] WinRT toast 直发失败（AUMID={aumid}）：{title_t} | {e}");
+                    fallback_notify(&app_t, &title_t, &body_t);
+                }
+                Err(_) => {
+                    log::warn!("[notify] WinRT toast 发送过程 panic：{title_t}");
+                    fallback_notify(&app_t, &title_t, &body_t);
+                }
+            }
+        });
+        if spawned.is_err() {
+            log::warn!("[notify] toast 发送线程创建失败，走插件兜底：{title}");
+            fallback_notify(app, title, body);
         }
     }
     #[cfg(not(windows))]

@@ -1095,7 +1095,11 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-search:focus { border-color: #0ea5e9; }
 .disk-search::placeholder { color: var(--text-3, #aaa); }
 .disk-hint { font-size: 12.5px; color: var(--text-2, #555); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.disk-statusbar { flex: none; min-height: 26px; display: flex; align-items: center; border-top: 1px solid var(--border); padding: 3px 10px; background: var(--bg-1, #fff); }
+.disk-hint .dh-target { color: #0284c7; }
+.disk-hint .dh-target b { font-weight: 700; }
+.disk-hint .dh-count { color: #15803d; font-weight: 600; }
+.disk-hint .dh-sep { color: var(--text-3, #999); margin: 0 6px; }
+.disk-statusbar { flex: none; min-height: 26px; display: flex; align-items: center; border-top: 1px solid var(--border); padding: 3px 10px; background: linear-gradient(90deg, rgba(14, 165, 233, 0.10), rgba(14, 165, 233, 0.03) 60%, rgba(14, 165, 233, 0.08)); }
 
 /* 自定义空间下拉（文字筛选 + 彩色分类标题行） */
 .dd { position: relative; flex: none; }

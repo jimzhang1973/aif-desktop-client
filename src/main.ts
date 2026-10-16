@@ -1619,6 +1619,10 @@ type SyncCfg = {
   /** 上次同步作业完成时间（epoch ms） */
   lastRun: number;
 };
+/** 本地目录归一化（大小写/正反斜杠/尾分隔符不敏感），供同步规则去重比对 */
+function syncNormDir(p: string): string {
+  return (p || "").replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+}
 /** 同步指纹（按规则分桶）。up=上次上传/登记时本地 mtime(s)；dl=云端已知版本 updateTime(ms)；
  *  lm=上次下载落盘后的本地 mtime(s)——两者皆备才能判定「双方都改过」（冲突检测）。 */
 type SyncFp = { up: Record<string, number>; dl: Record<string, number>; lm: Record<string, number> };
@@ -1712,6 +1716,22 @@ type SyncLogEntry = {
   skippedNoDir: number; // 云端无同名目录被跳过的本地文件数
   errors: string[]; // 规则级错误（如目录树拉取失败）
 };
+/** 本轮双向校验后双方完全一致：无任何下载/上传/跳过/冲突/错误 */
+function syncNoChanges(e: SyncLogEntry): boolean {
+  return (
+    !e.dlOk &&
+    !e.dlFail &&
+    !e.upOk &&
+    !e.upFail &&
+    !e.upSkip &&
+    !e.upSkipBig &&
+    !e.conflict &&
+    !e.skippedNoDir &&
+    !e.errors.length &&
+    !e.dlFails.length &&
+    !e.upFails.length
+  );
+}
 function syncLogStoreKey(): string {
   return `aif_disk_sync_logs__${diskCurEntryKey || "unauth"}`;
 }
@@ -1763,6 +1783,20 @@ function diskTaskStats(taskId: string): { ok: number; fail: number; fails: SyncF
 function diskSyncArm(): void {
   syncCfg = syncCfgLoad();
   syncCfgLoadedKey = syncStoreKey(); // 记录装载键，供 persist 前一致性校验
+  // 存量去重：同一「空间+云端目录+本地目录」视为同一条规则，保留最早创建的
+  // （历史版本无防重校验，同一目录多次「＋同步」会积累重复规则）
+  const seen = new Set<string>();
+  const before = syncCfg.rules.length;
+  syncCfg.rules = syncCfg.rules.filter((r) => {
+    const k = `${r.spaceId}|${r.subjectId}|${syncNormDir(r.localDir)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (syncCfg.rules.length !== before) {
+    syncCfgPersist();
+    diskLog(`同步规则去重：移除 ${before - syncCfg.rules.length} 条重复规则`, true);
+  }
   syncEditing = "";
   syncPickRuleId = "";
   syncNextRunAt = syncCfg.lastRun > 0 ? syncCfg.lastRun + syncCfg.freqMin * 60_000 : 0;
@@ -2144,7 +2178,7 @@ async function diskSyncRule(r: SyncRule): Promise<SyncLogEntry> {
 
   fpAll[r.id] = fp;
   syncFpPersist(fpAll);
-  if (!dlItems.length && !upByDir.size) diskLog(`${logTag}：无变更`, true);
+  if (!dlItems.length && !upByDir.size) diskLog(`${logTag}：同步成功：双方文档一致，无需更新`, true);
   return entry;
 }
 
@@ -2184,12 +2218,14 @@ function diskSyncRender(): void {
           <div class="sl-head"><span class="sl-time">${syncFmtTime(e.ts)}</span><span class="sr-path" title="${esc(e.rule)}">☁ ${esc(e.rule)}</span></div>
           <div class="sr-line sr-local" title="${esc(e.localDir)}">📁 ${esc(e.localDir || "—")}</div>
           <div class="sl-stats">
-            <span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
+            ${syncNoChanges(e)
+              ? `<span class="sl-ok">同步成功：双方文档一致，无需更新</span>`
+              : `<span class="sl-ok">↓ 成功 ${e.dlOk}</span><span class="${e.dlFail ? "sl-bad" : "sl-dim"}">失败 ${e.dlFail}</span>
             <span class="sl-ok">↑ 成功 ${e.upOk}</span><span class="${e.upFail ? "sl-bad" : "sl-dim"}">失败 ${e.upFail}</span>
             ${e.upSkip ? `<span class="sl-dim" title="云端存在同名在线文档，不支持上传/替换；已登记，文件不再改动不会重复提示">跳过（同名在线文档）${e.upSkip}</span>` : ""}
             ${e.conflict ? `<span class="sl-warn" title="双方都修改过：云端旧版本已存为「云端冲突」副本，本地版本覆盖云端">冲突（已生成云端冲突副本）${e.conflict}</span>` : ""}
             ${e.upSkipBig ? `<span class="sl-dim" title="超过单文件 100MB 上限，直接拦截不尝试上传；已登记，文件不再改动不会重复提示">跳过（超100MB）${e.upSkipBig}</span>` : ""}
-            ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}
+            ${e.skippedNoDir ? `<span class="sl-dim">跳过（云端目录创建失败）${e.skippedNoDir}</span>` : ""}`}
           </div>
           ${failList(e.dlFails)}${failList(e.upFails)}
           ${e.errors.length ? `<div class="sl-fails">${e.errors.map((m) => `<div class="sl-fail">✗ ${esc(m)}</div>`).join("")}</div>` : ""}
@@ -2626,6 +2662,13 @@ async function diskSyncBindSelected(): Promise<void> {
     if (!p || p.nodeType !== "subject" || p.id === spaceId) break;
     rel = `${p.name}/${rel}`;
     cur = p;
+  }
+  // 防重复建立：同一云端目录 + 同一本地目录（路径归一化比对）已有规则则拒绝
+  const dup = syncCfg.rules.find((r) => r.subjectId === node.id && syncNormDir(r.localDir) === syncNormDir(localDir));
+  if (dup) {
+    return toast(
+      `已存在相同的同步规则：「${dup.subjectPath}」 ⇄ ${dup.localDir}，无需重复创建（可在「⇄ 网盘同步-同步配置」中查看）`,
+    );
   }
   const rule: SyncRule = {
     id: `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -3339,11 +3382,11 @@ function diskUpdateButtons(): void {
   const hint = document.getElementById("disk-hint");
   if (hint) {
     const nFiles = [...diskSt.checked].filter((id) => diskSt.flat.get(id)?.nodeType === "article").length;
-    hint.textContent = dir
-      ? `上传目标：「${dir.name}」｜已选 ${nFiles} 个文件`
-      : nFiles
-        ? `已选 ${nFiles} 个文件`
-        : "";
+    // 彩色提示：上传目标=蓝、已选计数=绿（dir.name 经 esc 转义，hint 为 innerHTML 渲染）
+    const parts: string[] = [];
+    if (dir) parts.push(`<span class="dh-target">上传目标：<b>「${esc(dir.name)}」</b></span>`);
+    if (nFiles) parts.push(`<span class="dh-count">已选 ${nFiles} 个文件</span>`);
+    hint.innerHTML = parts.join(`<span class="dh-sep">｜</span>`);
   }
 }
 

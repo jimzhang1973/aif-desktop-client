@@ -72,7 +72,7 @@ fn default_hotkey() -> String {
     "Ctrl+Alt+B".to_string()
 }
 fn default_digest_time() -> String {
-    "09:00".to_string()
+    "17:30".to_string()
 }
 fn default_dnd_start() -> String {
     "22:00".to_string()

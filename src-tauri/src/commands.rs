@@ -2183,18 +2183,26 @@ pub async fn get_ai_agents(
 }
 
 /// 关闭/隐藏「当前 webview」：B/S 页面里的 window.close() 由初始化脚本转交到这里。
+/// 关键（2026-10-16 实证）：收 `tauri::Webview` 而非 `tauri::Window`——标签子 webview
+/// （tab-N）寄宿在主窗内，Window 参数恒解析为主窗 label=main，路由全错；Webview 参数
+/// 才是发起请求的真实 webview（label=tab-N / bs-page-N / main / login）。
 /// 分流规则：
-/// - 标签页（tab-N）：不走本命令——标签的 shim 会转交 tab_close_self；
-/// - B/S 弹窗（bs-page-N）与对话窗（conversation）：直接关闭窗口；
-/// - 主窗/登录窗：B/S 页面不可能合法地关闭应用主窗——只记日志，不做任何动作。
+/// - tab-N：标签子 webview → 走统一关标签逻辑（持久化 + bs-closed 事件）；
+/// - bs-page-N / conversation：独立窗口，直接关闭窗口；
+/// - main：主 UI 本体，B/S 页面不可能合法关闭主窗——只记日志，不做任何动作；
+/// - login：隐藏登录窗。
 #[tauri::command]
-pub fn close_webview_self(app: AppHandle, window: tauri::Window) {
-    let label = window.label().to_string();
+pub fn close_webview_self(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    webview: tauri::Webview,
+) {
+    let label = webview.label().to_string();
     log::info!("[close-self] webview 请求关闭自身: label={label}");
     if label == "main" {
-        // 主窗 webview 是应用 UI 本体，B/S 页面只存在于子 webview
-        // （tab-N / bs-page-N / conversation / login）。
-        // 只记日志，绝不 hide/close 主窗（历史上隐藏主窗会让用户以为程序挂了）。
+        // 主窗 UI webview 是应用本体，B/S 页面只存在于子 webview（tab-N / bs-page-N /
+        // conversation / login）。只记日志，绝不 hide/close 主窗（历史上隐藏主窗会让用户
+        // 以为程序挂了）。
         log::warn!("[close-self] label=main 的关闭请求已忽略（主窗不承载 B/S 页面）");
         return;
     }
@@ -2202,6 +2210,16 @@ pub fn close_webview_self(app: AppHandle, window: tauri::Window) {
         if let Some(w) = app.get_webview_window("login") {
             let _ = w.hide();
         }
+        return;
+    }
+    // tab-N：标签子 webview → 统一关标签（含持久化与 bs-closed 刷新广播）。
+    // 该路径是 JS 侧 hook 争抢（BS_WINDOW_SHIM defineProperty 锁死 close）时的兜底，
+    // 保证无论哪个脚本赢了 window.close，标签都能正确关闭。
+    if label.starts_with("tab-") {
+        let st = state.inner().clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            crate::tabs::close_tab_checked(&app, &st, &label)
+        });
         return;
     }
     // bs-page-N / conversation 等独立窗口：整窗关闭，并通知前端刷新当前页

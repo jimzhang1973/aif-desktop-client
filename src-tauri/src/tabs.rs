@@ -221,7 +221,8 @@ pub(crate) fn close_capture_script(label: &str) -> String {
 }
 
 /// 关闭指定标签（存在才关）：tab_close_self 命令与标题哨兵兜底共用。
-fn close_tab_checked(app: &AppHandle, state: &std::sync::Arc<AppState>, label: &str) {
+/// pub(crate)：close_webview_self 的 tab-N 兜底路由也走这里（hook 争抢时命令层兜底）。
+pub(crate) fn close_tab_checked(app: &AppHandle, state: &std::sync::Arc<AppState>, label: &str) {
     let exists = {
         let inner = state.tabs.0.lock().unwrap();
         inner.tabs.iter().any(|t| t.id == label)
@@ -252,7 +253,12 @@ fn create_tab_webview(
     let target = Url::parse(url).map_err(|e| format!("URL 无效: {e}"))?;
     let host = target.host_str().unwrap_or("").to_string();
     let main = app.get_window("main").ok_or("主窗口不存在")?;
-    let init = format!("{}\n{}", BS_WINDOW_SHIM, close_capture_script(id));
+    // 初始化脚本顺序不可对调（2026-10-16 实证）：close_capture_script 必须先注入——
+    // 它用 defineProperty(writable:false, configurable:false) 锁定 window.close → tab_close_self；
+    // 若 BS_WINDOW_SHIM 先注入同样锁死 close → 转交 close_webview_self，而该命令从
+    // tab 子 webview 解析到的宿主 Window 恒为 main（label=main 直接忽略）→ 标签永远关不掉。
+    // BS_WINDOW_SHIM 的 openNewTab/openWin shim 与顺序无关，放后面照常生效。
+    let init = format!("{}\n{}", close_capture_script(id), BS_WINDOW_SHIM);
     let app2 = app.clone();
     let host2 = host.clone();
     // 页面真实标题（webview 引擎维护的 document.title）变化时，直接更新存储并广播 tab-title。

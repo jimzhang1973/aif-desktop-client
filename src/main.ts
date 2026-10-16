@@ -1238,14 +1238,22 @@ let diskTransfers: TransferTask[] = [];
 const diskSilentTasks: TransferTask[] = []; // 自动同步专用任务（内存态，不入传输日志）
 const diskActiveTask: Record<"upload" | "download" | "delete", string> = { upload: "", download: "", delete: "" };
 
-/** 当前入口键（与常用入口主键同口径：产品|网址|账号）；登录就绪前为空串（走 legacy 键） */
+/** 当前入口键（与常用入口主键同口径：产品|网址|账号）；登录就绪前为空串（走 unauth 键） */
 let diskCurEntryKey = "";
+/** 登录用户名（keyring bs_username，bootstrap 时读取）：entryKey 的账号段首选身份源。
+ *  不用服务端渲染的 humanCode（userInfo.account）——该字段跨产品/跨会话不稳定，
+ *  曾致同一用户数据散落 zjb / zjb5 / 空账号三种键（2026-10-16 leveldb 实证）。
+ *  webview 人工登录无保存凭据时为空串，此时才回退 humanCode。 */
+let loginUsername = "";
 function entryKey(): string {
   const u = (settings?.base_url || "").replace(/\/+$/, "");
-  return `${settings?.ops_product ? 1 : 0}|${u}|${userInfo?.account || ""}`;
+  const acct = loginUsername || userInfo?.account || "";
+  return `${settings?.ops_product ? 1 : 0}|${u}|${acct}`;
 }
 function transferStoreKey(): string {
-  return diskCurEntryKey ? `aif_disk_transfers__${diskCurEntryKey}` : "aif_disk_transfers__legacy";
+  // unauth 键不含「|」，不可能与真实入口键（0|https://...|账号）碰撞；
+  // 且登录就绪前持久化一律拒绝（见各 persist 的 diskCurEntryKey 守卫），unauth 只作读兜底
+  return `aif_disk_transfers__${diskCurEntryKey || "unauth"}`;
 }
 
 /** 传输日志保留 7 天（读写双侧过滤，与同步日志同策略） */
@@ -1263,6 +1271,7 @@ function diskTransferLoad(): void {
   }
 }
 function diskTransferPersist(): void {
+  if (!diskCurEntryKey) return; // 登录就绪前不持久化（unauth 键防垃圾写入）
   try {
     const floor = Date.now() - TRANSFER_TTL;
     localStorage.setItem(
@@ -1622,14 +1631,19 @@ let syncPickSpaceId = "";
 let syncPickNodes: DiskNode[] | null = null;
 let syncEditing = ""; // 正在编辑的规则 id（空=列表态）
 let syncTab: "cfg" | "log" = "cfg"; // 同步抽屉当前页签
+/** syncCfg 装载时的存储键：persist 前比对，防「装载 A 键 → 写入 B 键」的跨入口覆盖 */
+let syncCfgLoadedKey = "";
 
 const SYNC_FREQS = [5, 15, 30, 60];
 
 function syncStoreKey(): string {
-  return `aif_disk_sync__${diskCurEntryKey || entryKey()}`;
+  // 不做 entryKey() 活回退：entryKey 依赖 settings/userInfo，会话中随时可能变化，
+  // 回退会造成「装载用 A 键、写入用 B 键」的错位覆盖（2026-10-16 同步规则被清空实证）。
+  // 键只能随 diskCurEntryKey 变化，而后者仅在 diskOnEntryReady（同步重装载 syncCfg）时更新。
+  return `aif_disk_sync__${diskCurEntryKey || "unauth"}`;
 }
 function syncFpStoreKey(): string {
-  return `aif_disk_sync_fp__${diskCurEntryKey || entryKey()}`;
+  return `aif_disk_sync_fp__${diskCurEntryKey || "unauth"}`;
 }
 function syncCfgLoad(): SyncCfg {
   try {
@@ -1648,8 +1662,17 @@ function syncCfgLoad(): SyncCfg {
   return { enabled: false, freqMin: 30, rules: [], lastRun: 0 };
 }
 function syncCfgPersist(): void {
+  // 守卫①：登录就绪前不持久化（此时键为 unauth，写入即垃圾）
+  // 守卫②：存储键与 syncCfg 装载键不一致（入口切换但 syncCfg 未重装载）时拒写，
+  //        防止把 A 入口的空/旧配置覆盖到 B 入口的键上（曾把高基数据规则清空）
+  if (!diskCurEntryKey) return;
+  const k = syncStoreKey();
+  if (syncCfgLoadedKey && k !== syncCfgLoadedKey) {
+    console.warn("[disk] syncCfg 存储键漂移，拒绝写入：", syncCfgLoadedKey, "→", k);
+    return;
+  }
   try {
-    localStorage.setItem(syncStoreKey(), JSON.stringify(syncCfg));
+    localStorage.setItem(k, JSON.stringify(syncCfg));
   } catch {
     /* 忽略持久化失败 */
   }
@@ -1662,6 +1685,7 @@ function syncFpLoad(): Record<string, SyncFp> {
   }
 }
 function syncFpPersist(fp: Record<string, SyncFp>): void {
+  if (!diskCurEntryKey) return; // 登录就绪前不持久化（unauth 键防垃圾写入）
   try {
     localStorage.setItem(syncFpStoreKey(), JSON.stringify(fp));
   } catch {
@@ -1689,7 +1713,7 @@ type SyncLogEntry = {
   errors: string[]; // 规则级错误（如目录树拉取失败）
 };
 function syncLogStoreKey(): string {
-  return `aif_disk_sync_logs__${diskCurEntryKey || entryKey()}`;
+  return `aif_disk_sync_logs__${diskCurEntryKey || "unauth"}`;
 }
 function syncLogLoad(): SyncLogEntry[] {
   try {
@@ -1702,6 +1726,7 @@ function syncLogLoad(): SyncLogEntry[] {
   }
 }
 function syncLogPush(e: SyncLogEntry): void {
+  if (!diskCurEntryKey) return; // 登录就绪前不持久化（unauth 键防垃圾写入）
   try {
     const logs = syncLogLoad();
     logs.unshift(e);
@@ -1737,6 +1762,7 @@ function diskTaskStats(taskId: string): { ok: number; fail: number; fails: SyncF
  *  从未跑过 → 立即可执行；跑过 → 上次完成 + 频率（早已过期同样立即）。 */
 function diskSyncArm(): void {
   syncCfg = syncCfgLoad();
+  syncCfgLoadedKey = syncStoreKey(); // 记录装载键，供 persist 前一致性校验
   syncEditing = "";
   syncPickRuleId = "";
   syncNextRunAt = syncCfg.lastRun > 0 ? syncCfg.lastRun + syncCfg.freqMin * 60_000 : 0;
@@ -5677,6 +5703,12 @@ async function bootstrap() {
   settings = await api.getSettings();
   const logged = await api.isLoggedIn();
   if (logged) {
+    // 入口身份源：优先 keyring 登录用户名（稳定），读不到才回退 humanCode
+    try {
+      loginUsername = (await api.getCredentialHint()).username || "";
+    } catch {
+      loginUsername = "";
+    }
     renderPanel();
     await loadUserInfo();
     diskOnEntryReady(); // 按入口装载传输历史 + 网盘同步配置（入口切换/自动登录共用此入口）

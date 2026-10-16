@@ -2890,9 +2890,13 @@ function diskFileMenu(node: DiskNode, x: number, y: number, openEvent?: Event): 
   }
   const menu = document.createElement("div");
   menu.id = "disk-file-menu";
+  // 类型胶囊与文档 Tab 同口径：网盘附件 / 在线文档；在线 Excel 细分「智能表格」
+  const isSmartSheet = node.nodeType === "article" && node.subtype === "EXCEL";
   const tag = isFile
     ? `<span class="dfm-tag" style="--tc:#0ea5e9">网盘附件</span>`
-    : `<span class="dfm-tag" style="--tc:#8b5cf6">在线文档</span>`;
+    : isSmartSheet
+      ? `<span class="dfm-tag" style="--tc:#107c41">智能表格</span>`
+      : `<span class="dfm-tag" style="--tc:#8b5cf6">在线文档</span>`;
   menu.innerHTML =
     `<div class="dfm-title"><span class="dfm-name" title="${esc(disp.name)}">${esc(disp.name)}</span>${tag}</div>` +
     btns
@@ -4535,14 +4539,17 @@ const DOC_TYPE_COLORS: [string[], string][] = [
 
 type DocIconKind = "word" | "excel" | "ppt" | "pdf" | "generic";
 
-/** 在线文档类型官方中文名（对齐 B/S dksel.js articleTypeNameEnum） */
-const DOC_ATYPE_NAMES: Record<string, string> = {
-  DOC: "电子文档",
-  MARKDOWN: "MD文档",
-  EXCEL: "智能表格",
-  FILE: "文件",
-  RICHTEXT: "文本文档",
-};
+/** 文档类型胶囊：统一「网盘附件 / 在线文档」两大类，在线 Excel 细分为「智能表格」。
+ *  判定只看 atype（articleType）：FILE=附件；EXCEL=在线智能表格；
+ *  其余非空 atype（DOC/MARKDOWN/RICHTEXT…）=在线文档；空=不显示。
+ *  注：collect 等接口的 fileType 字段（如 xlsx）只是底层文件形态，
+ *  在线 Excel 也会带 fileType，不能作为附件判定依据（2026-10-16 实测）。 */
+function docTypePillName(d: DocRow): string {
+  if (d.atype === "FILE") return "网盘附件";
+  if (d.atype === "EXCEL") return "智能表格";
+  if (d.atype) return "在线文档";
+  return "";
+}
 
 function docTypeStyle(d: DocRow): { kind: DocIconKind; color: string; label: string } {
   const ft = (d.file_type || "").toLowerCase();
@@ -4661,7 +4668,7 @@ function renderDocList() {
         lastGroup = g;
       }
     }
-    const typeName = DOC_ATYPE_NAMES[d.atype] || "";
+    const typeName = docTypePillName(d);
     const time = fmtRelTime(d.time_str);
     html += `
       <div class="list-item card doc-card" data-url="${esc(d.url)}" title="${esc([d.title, d.time_str].filter(Boolean).join("　"))}">

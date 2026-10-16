@@ -2515,9 +2515,16 @@ async function renderDisk(content: HTMLElement) {
   // 空间搜索框：输入即过滤下拉选项（命中名称或分类）；当前选中项被过滤掉时保持原选中不动，仅缩小可选范围
   const filterInput = document.getElementById("disk-space-filter") as HTMLInputElement;
   filterInput.addEventListener("input", () => {
-    const cur = sel.value;
     fillSpaceOptions(filterInput.value);
-    if (spaces.some((s) => s.id === cur) && sel.querySelector(`option[value="${CSS.escape(cur)}"]`)) sel.value = cur;
+    // 当前已加载的空间若被过滤掉，补一个锚定 option 保住选中值。
+    // 否则浏览器会把 sel.value 自动落到第一个过滤结果上——此时点这个选项值不变、
+    // 不触发 change，看起来「点了没反应」（筛选后只剩一个选项时必现）。
+    const loaded = diskSt.spaceId;
+    if (loaded && !sel.querySelector(`option[value="${CSS.escape(loaded)}"]`)) {
+      const cur = spaces.find((s) => s.id === loaded);
+      if (cur) sel.insertAdjacentHTML("afterbegin", `<option value="${esc(cur.id)}">${esc(cur.name)}</option>`);
+    }
+    if (loaded && sel.querySelector(`option[value="${CSS.escape(loaded)}"]`)) sel.value = loaded;
   });
   document.getElementById("disk-refresh")!.addEventListener("click", () => void diskLoadSpace(sel.value));
   // 传输/日志管理器抽屉

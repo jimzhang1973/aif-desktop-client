@@ -2438,10 +2438,10 @@ async function renderDisk(content: HTMLElement) {
       <div class="disk-spacerow">
         <select id="disk-space" class="disk-select" title="选择空间"></select>
         <input id="disk-space-filter" class="disk-search" type="text" placeholder="搜索空间…" spellcheck="false" />
-        <span class="disk-hint" id="disk-hint"></span>
       </div>
       <div class="disk-tree" id="disk-tree"><div class="empty">正在加载…</div></div>
       <div class="disk-log" id="disk-log"></div>
+      <div class="disk-statusbar"><span class="disk-hint" id="disk-hint"></span></div>
       <div class="disk-confirm" id="disk-confirm" hidden>
         <div class="dc-box">
           <div class="dc-title" id="dc-title"></div>

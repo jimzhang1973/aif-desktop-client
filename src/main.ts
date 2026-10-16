@@ -2603,9 +2603,10 @@ async function renderDisk(content: HTMLElement) {
   diskSyncRefreshDot();
   if (!syncCfg) diskSyncArm(); // 未登录就绪前直接打开网盘页：先装载同步配置
   document.getElementById("disk-up")!.addEventListener("click", () => {
-    const d = diskFirstCheckedDir();
-    if (!d) return toast("请先在树上勾选一个目标目录");
-    void diskUploadTo(d);
+    const dirs = diskCheckedTopDirs();
+    if (dirs.length > 1) return toast("勾选了多个目录：无法确定上传目标，请只保留一个目录的勾选");
+    if (!dirs[0]) return toast("请先在树上勾选一个目标目录");
+    void diskUploadTo(dirs[0]);
   });
   document.getElementById("disk-dl")!.addEventListener("click", () => {
     void (async () => {
@@ -2632,15 +2633,15 @@ async function diskSyncBindSelected(): Promise<void> {
   if (!syncCfg) return;
   // 只允许当前层级勾选一个目录：级联勾进来的下级目录/文件不算（其父级已被勾选）；
   // 跨目录勾选（如 A 目录 + B 目录的子目录）一律拒绝——即使父链缺失也要能识别
-  const checkedDirs = [...diskSt.checked]
-    .map((id) => diskSt.flat.get(id))
-    .filter((n): n is DiskNode => !!n && n.nodeType === "subject");
-  const topDirs = checkedDirs.filter((n) => !diskSt.checked.has(diskParentId(n)));
+  const topDirs = diskCheckedTopDirs();
   if (topDirs.length > 1) return toast("跨目录勾选：请只保留一个目录的勾选（不同目录及其子目录不可同时勾选）");
   if (topDirs.length === 0) return toast("请在当前层级只勾选一个目录");
   const node = topDirs[0];
   // 兜底校验：任何位于该目录子树之外的勾选目录（父链异常导致的漏排除）同样拒绝
   const underIds = new Set(diskCollectUnder(node.id).map((k) => k.id));
+  const checkedDirs = [...diskSt.checked]
+    .map((id) => diskSt.flat.get(id))
+    .filter((n): n is DiskNode => !!n && n.nodeType === "subject");
   if (checkedDirs.some((n) => n.id !== node.id && !underIds.has(n.id))) {
     return toast("跨目录勾选：请先取消其他目录的勾选");
   }
@@ -3352,23 +3353,28 @@ function diskCollectUnder(rootId: string, prune = false): DiskNode[] {
   return out;
 }
 
-/** 第一个勾选的目录（作为上传目标） */
-function diskFirstCheckedDir(): DiskNode | null {
-  for (const id of diskSt.checked) {
-    const n = diskSt.flat.get(id);
-    if (n && n.nodeType === "subject") return n;
-  }
-  return null;
+/** 顶层勾选目录（父级未被勾选；级联勾选的下级目录不算）。
+ *  上传/建立同步都要求「顶层勾选目录唯一」——多个顶层目录时无法确定目标。 */
+function diskCheckedTopDirs(): DiskNode[] {
+  const checkedDirs = [...diskSt.checked]
+    .map((id) => diskSt.flat.get(id))
+    .filter((n): n is DiskNode => !!n && n.nodeType === "subject");
+  return checkedDirs.filter((n) => !diskSt.checked.has(diskParentId(n)));
 }
 
 /** 按勾选状态点亮/灰置上传、下载按钮 */
 function diskUpdateButtons(): void {
   const up = document.getElementById("disk-up") as HTMLButtonElement | null;
   const dl = document.getElementById("disk-dl") as HTMLButtonElement | null;
-  const dir = diskFirstCheckedDir();
+  const topDirs = diskCheckedTopDirs();
   if (up) {
-    up.disabled = !dir;
-    up.title = dir ? `上传文件到「${dir.name}」` : "先在树上勾选一个目标目录";
+    up.disabled = topDirs.length !== 1;
+    up.title =
+      topDirs.length === 1
+        ? `上传文件到「${topDirs[0].name}」`
+        : topDirs.length > 1
+          ? "勾选了多个目录：无法确定上传目标，请只保留一个目录的勾选"
+          : "先在树上勾选一个目标目录";
   }
   if (dl) {
     dl.disabled = diskSt.checked.size === 0;
@@ -3382,9 +3388,11 @@ function diskUpdateButtons(): void {
   const hint = document.getElementById("disk-hint");
   if (hint) {
     const nFiles = [...diskSt.checked].filter((id) => diskSt.flat.get(id)?.nodeType === "article").length;
-    // 彩色提示：上传目标=蓝、已选计数=绿（dir.name 经 esc 转义，hint 为 innerHTML 渲染）
+    // 彩色提示：上传目标=蓝、已选计数=绿、多目录警告=橙（名称经 esc 转义，hint 为 innerHTML 渲染）
     const parts: string[] = [];
-    if (dir) parts.push(`<span class="dh-target">上传目标：<b>「${esc(dir.name)}」</b></span>`);
+    if (topDirs.length === 1) parts.push(`<span class="dh-target">上传目标：<b>「${esc(topDirs[0].name)}」</b></span>`);
+    else if (topDirs.length > 1)
+      parts.push(`<span class="dh-warn">已勾选 ${topDirs.length} 个目录：无法确定上传目标</span>`);
     if (nFiles) parts.push(`<span class="dh-count">已选 ${nFiles} 个文件</span>`);
     hint.innerHTML = parts.join(`<span class="dh-sep">｜</span>`);
   }

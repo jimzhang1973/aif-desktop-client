@@ -1098,6 +1098,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .disk-hint .dh-target { color: #0284c7; }
 .disk-hint .dh-target b { font-weight: 700; }
 .disk-hint .dh-count { color: #15803d; font-weight: 600; }
+.disk-hint .dh-warn { color: #d97706; font-weight: 600; }
 .disk-hint .dh-sep { color: var(--text-3, #999); margin: 0 6px; }
 .disk-statusbar { flex: none; min-height: 26px; display: flex; align-items: center; border-top: 1px solid var(--border); padding: 3px 10px; background: linear-gradient(90deg, rgba(14, 165, 233, 0.10), rgba(14, 165, 233, 0.03) 60%, rgba(14, 165, 233, 0.08)); }
 

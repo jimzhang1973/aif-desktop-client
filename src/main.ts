@@ -3534,7 +3534,7 @@ async function diskDeleteSelected(): Promise<void> {
     const failedItems = res.items.filter((it) => !it.ok && it.msg);
     if (failedItems.length)
       diskLog(
-        `删除部分失败：${failedItems
+        `以下文件未能删除：${failedItems
           .map((it) => `${it.kind === "dir" ? "目录" : "文件"}「${nameById.get(it.id) ?? it.id}」：${it.msg}`)
           .join("；")}`,
         false,

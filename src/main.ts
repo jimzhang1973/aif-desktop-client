@@ -3530,7 +3530,15 @@ async function diskDeleteSelected(): Promise<void> {
     for (const o of onlineDocs) task.items.push({ name: nameById.get(o.id) ?? o.name, ok: false, msg: "在线文档(已排除)", muted: true });
     diskTransferFinish("delete", task.items.length);
     if (onlineDocs.length) diskLog(`在线文档不允许删除：${onlineDocs.map((o) => o.name).join("、")}`, false);
-    if (res.failed.length) diskLog(`删除部分失败：${res.failed.join("；")}`, false);
+    // 失败明细从 items 组装（后端 res.failed 拼的是原始 id，界面不可读）；名称用删除前捕获的映射
+    const failedItems = res.items.filter((it) => !it.ok && it.msg);
+    if (failedItems.length)
+      diskLog(
+        `删除部分失败：${failedItems
+          .map((it) => `${it.kind === "dir" ? "目录" : "文件"}「${nameById.get(it.id) ?? it.id}」：${it.msg}`)
+          .join("；")}`,
+        false,
+      );
     diskLog(`删除完成：文件 ${res.deletedFiles} 个、目录 ${res.deletedDirs} 个`, true);
     toast(
       `删除完成（文件 ${res.deletedFiles}、目录 ${res.deletedDirs}${res.failed.length ? `，${res.failed.length} 个失败` : ""}）`,

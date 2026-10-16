@@ -1203,7 +1203,7 @@ pub struct DocRow {
     pub url: String,
     /// 最近打开/更新时间（字符串键或毫秒数字键均支持；取不到为空串）
     pub time_str: String,
-    /// 最近浏览人（browse=uname）/创建人（collect 等=createName）；取不到为空串
+    /// 文档作者（collect/hot=createName）；browse（最近访问）原始数据无作者字段，恒为空串
     pub user_name: String,
 }
 
@@ -1362,8 +1362,15 @@ pub async fn get_docs(
             if time_str.is_empty() {
                 time_str = fmt_ms(jnum(o, &["opdate", "browseTime", "updateTime", "createTime", "senddate"]));
             }
-            // 最近浏览人（browse）/创建人（其余）
-            let user_name = jstr(o, &["uname", "createName", "cuname"]);
+            // 文档作者。
+            // 2026-10-16 实测：browse（最近访问）原始数据无作者字段（uname=浏览人即当前用户）；
+            // collect 的 userName=收藏人（也是当前用户），非作者，不取；
+            // hot（公共文档）若返回 createName 则为真实作者，取不到即置空不显示。
+            let user_name = if category == "browse" {
+                String::new()
+            } else {
+                jstr(o, &["createName", "cuname"])
+            };
             DocRow { id, title, space_name, file_type, atype, url, time_str, user_name }
         })
         .filter(|d| !d.id.is_empty() && !d.title.is_empty())

@@ -167,7 +167,7 @@ export interface DocRow {
   url: string;
   /** 最近打开/更新时间（后端按候选键提取，取不到为空串） */
   time_str: string;
-  /** 最近浏览人/创建人（browse=uname，其余=createName；取不到为空串） */
+  /** 文档作者（收藏/公共=createName；最近访问原始数据无作者字段，恒为空串不显示） */
   user_name: string;
 }
 

@@ -57,14 +57,15 @@ function esc(s: string): string {
 /** AI 问答入口：两产品均有原生问答页，直开（均经 B/S 原生源码证实，会话 Cookie 共享）：
  *  - 运维（AIF）：/AIF/ai/chat/index.htm?spaceId=&questionText=
  *    （B/S 原生：顶栏搜索「AI」tab → nonlogin/knowledge/view/search.htm?showTab=ai 内嵌加载；
- *      注意 /DCP/ai/index.htm 在 AIF 会话下 401，两产品问答页互不相通）
- *  - 一表通（DCP）：/DCP/ai/index.htm?spaceId=&questionText=（同款搜索页内嵌加载）
- *  注：/AIF/ai/persona/agent/authorized.htm 当前账号实测返回 []，多智能体菜单链路弃用 */
+ *      两产品问答页互不相通，跨产品会话 401）
+ *  - 一表通（DCP）：/DCP/ai/chat/index.htm?spaceId=&questionText=
+ *    （2026-10-16 DCP 升级后与 AIF 统一：旧 /DCP/ai/index.htm 已 404 下线，
+ *      新 chat 页 spaceId/questionText 与 aiAgentId 两种参数组合均实测 200） */
 function aiEntryUrl(): string {
   const base = (settings?.base_url || "").replace(/\/+$/, "");
   return settings?.ops_product
     ? `${base}/AIF/ai/chat/index.htm?spaceId=&questionText=`
-    : `${base}/DCP/ai/index.htm?spaceId=&questionText=`;
+    : `${base}/DCP/ai/chat/index.htm?spaceId=&questionText=`;
 }
 
 
@@ -1136,15 +1137,14 @@ function applyNavLabels(): void {
   document.getElementById("sidenav")?.classList.toggle("hide-labels", !settings?.nav_show_labels);
 }
 
-/** 智能体会话页：实测 2026-10-14（curl 登录态验证）——
- *  - DCP：/DCP/ai/index.htm?aiAgentId=<id> 服务端注入 let agentId="<id>"，进入即专用智能体问答；
- *  - AIF：/AIF/ai/chat/index.htm?aiAgentId=<id>（B/S 原生 top.openNewTab 行为）。
+/** 智能体会话页（2026-10-16 DCP 升级后与 AIF 完全统一，实测 DCP 会话 200）：
+ *  - AIF：/AIF/ai/chat/index.htm?aiAgentId=<id>（B/S 原生 top.openNewTab 行为）；
+ *  - DCP：/DCP/ai/chat/index.htm?aiAgentId=<id>（旧 /DCP/ai/index.htm 已 404 下线）。
  *  注意参数名是 aiAgentId（agentId 不生效）；图标由 Rust 侧归一化为绝对 URL */
 function agentChatUrl(id: string): string {
   const base = (settings?.base_url || "").replace(/\/+$/, "");
-  return settings?.ops_product
-    ? `${base}/AIF/ai/chat/index.htm?aiAgentId=${encodeURIComponent(id)}`
-    : `${base}/DCP/ai/index.htm?aiAgentId=${encodeURIComponent(id)}`;
+  const path = settings?.ops_product ? "/AIF/ai/chat/index.htm" : "/DCP/ai/chat/index.htm";
+  return `${base}${path}?aiAgentId=${encodeURIComponent(id)}`;
 }
 
 /** 「助手」页：当前账号授权的 AI 智能体列表，点击在受控 webview 打开会话。

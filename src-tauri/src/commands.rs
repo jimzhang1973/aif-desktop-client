@@ -2110,10 +2110,10 @@ pub async fn get_ai_agents(
     };
     let session = auth::load_session().filter(|s| !s.is_empty()).ok_or("未登录")?;
 
-    // 数据源探测顺序（2026-10-14 与用户确认的版本语义）：
-    // 1) /{产品根}/ai/persona/agent/authorized.htm —— 新版接口（AIF 部署；实测 AIF 会话 200）
-    // 2) /{产品根}/ai/agent/authorized.htm —— 旧版接口（DCP 部署；实测 DCP 会话 200，18 个智能体）
-    // 两产品各只部署其一：先试新版，接口不存在（404 等非成功）自动回退旧版；
+    // 数据源探测顺序（2026-10-16 更新：DCP 下午升级后已与 AIF 统一部署新版 persona 接口）：
+    // 1) /{产品根}/ai/persona/agent/authorized.htm —— 新版接口（AIF/DCP 均部署；DCP 实测 200，11 个智能体）
+    // 2) /{产品根}/ai/agent/authorized.htm —— 旧版接口（DCP 升级前部署；升级后 404，仅作历史部署兜底）
+    // 先试新版，接口不存在（404 等非成功）自动回退旧版；
     // 成功返回的数组（含空）视为权威结果，直接采用不再兜底。
     let mut last_err = String::new();
     for (src_root, path) in [

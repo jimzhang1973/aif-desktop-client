@@ -87,10 +87,10 @@ const AGENT_TTL = 5 * 60_000;
 let quickCache: { at: number; items: QuickEntry[] } | null = null;
 const QUICK_TTL = 5 * 60_000;
 
-/** 智能体会话页（与主窗 agentChatUrl 同规则，实测 aiAgentId 参数名）：
- *  DCP=/DCP/ai/index.htm?aiAgentId=，AIF=/AIF/ai/chat/index.htm?aiAgentId= */
+/** 智能体会话页（与主窗 agentChatUrl 同规则，实测 aiAgentId 参数名）。
+ *  2026-10-16 DCP 升级后与 AIF 统一：两产品均为 ai/chat/index.htm（旧 /DCP/ai/index.htm 已 404） */
 function agentChatUrl(id: string): string {
-  const path = opsProduct ? "/AIF/ai/chat/index.htm" : "/DCP/ai/index.htm";
+  const path = opsProduct ? "/AIF/ai/chat/index.htm" : "/DCP/ai/chat/index.htm";
   return `${baseUrl}${path}?aiAgentId=${encodeURIComponent(id)}`;
 }
 

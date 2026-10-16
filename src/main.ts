@@ -3598,6 +3598,9 @@ let unreadIds = new Set<string>(
   ),
 );
 let todoBadgeCount = 0; // 「我收到的」各行「待办」计数合计
+// 托盘是否正处于新消息闪烁中：收到非静音新消息置 true，发出 tray_flash_stop 后复位。
+// 主窗内 mousedown 据此决定是否调用后端（避免每次点击都走一次 IPC）
+let trayFlashActive = false;
 
 function persistUnread() {
   localStorage.setItem("aif_unread_msg_ids", JSON.stringify([...unreadIds].slice(-300)));
@@ -3611,7 +3614,8 @@ function markOneRead(id: string): boolean {
   unreadIds.delete(id);
   persistUnread();
   setTabBadge("messages", unreadIds.size);
-  // 点击消息 = 已阅：停止托盘新消息闪烁（2026-10-15 约定；幂等，重复调用无害）
+  // 点击消息 = 已阅：停止托盘新消息闪烁（幂等，重复调用无害）
+  trayFlashActive = false;
   void invoke("tray_flash_stop").catch(() => {});
   // 行内样式同步：列表可能处于任一渲染态（当前页 / 本地回退），全量清理兜底
   document.querySelectorAll(`.msg-row[data-id="${CSS.escape(id)}"]`).forEach((row) => {
@@ -5848,9 +5852,22 @@ async function main() {
     void refreshMessages(true);
     // 勿扰时段/静音关键词命中的消息：只计未读角标，不响铃不弹 toast
     if (m.muted) return;
+    // 托盘已进入新消息闪烁：主窗内任意鼠标点击即停（打开/聚焦主窗由 Rust 侧 raise_main/Focused 覆盖）
+    trayFlashActive = true;
     playSound(settings?.sound || "chime");
     toast("新消息：" + m.title);
   });
+  // 主窗内任意鼠标点击 → 停止托盘新消息闪烁（已聚焦窗口内的点击不再触发 Rust Focused 事件，
+  // 由这里兜底；仅在闪烁中才发 IPC）。capture 捕获拖拽区/禁用元素上的按下也计入
+  document.addEventListener(
+    "mousedown",
+    () => {
+      if (!trayFlashActive) return;
+      trayFlashActive = false;
+      void invoke("tray_flash_stop").catch(() => {});
+    },
+    true,
+  );
   // 系统通知点击跳转：Rust 按通知标题反查消息 URL 后置前主窗口并 emit；
   // 走 openUrl（全屏开 tab / 默认开独立 webview 窗口），文档空间消息自带 articleShowMessageBox=true。
   // 点击即视为已读：按 URL 反查消息并消除未读角标（与消息列表点击行为一致）

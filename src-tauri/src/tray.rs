@@ -169,6 +169,13 @@ pub fn refresh_menu(app: &AppHandle) {
     sync_menu(app);
 }
 
+/// 托盘默认提示（悬停 hint）：随产品品牌 运维=「运维小助手」/ 一表通=「一表通小助手」
+fn default_tooltip(app: &AppHandle) -> String {
+    app.try_state::<Arc<AppState>>()
+        .map(|s| s.settings.lock().unwrap().product_title().to_string())
+        .unwrap_or_else(|| "业务小助手".to_string())
+}
+
 /// 构建托盘图标与右键菜单，并处理菜单事件
 pub fn build(app: &AppHandle) -> anyhow::Result<()> {
     let menu = build_menu(app)?;
@@ -179,11 +186,7 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
     // 不用 resource_dir：dev 模式下它指向 target\debug\，图标并不在那，会 os error 3。
     let icon = normal_icon();
 
-    // 托盘提示随产品品牌：运维=「运维小助手」/ 一表通=「一表通小助手」
-    let tooltip = app
-        .try_state::<Arc<AppState>>()
-        .map(|s| s.settings.lock().unwrap().product_title().to_string())
-        .unwrap_or_else(|| "业务小助手".to_string());
+    let tooltip = default_tooltip(app);
 
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
@@ -239,11 +242,16 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
 
     // 系统深浅模式切换 → 重建菜单图标。主窗口隐藏时 Windows 一般仍会派发
     // ThemeChanged；万一丢失，托盘悬停（Enter）时的 sync_menu 兜底。
+    // 窗口获得焦点（打开主窗 / 点击未聚焦的主窗）→ 停止托盘闪烁。
     if let Some(w) = app.get_window("main") {
         let app2 = app.clone();
         w.on_window_event(move |e| {
-            if matches!(e, tauri::WindowEvent::ThemeChanged(_)) {
-                sync_menu(&app2);
+            match e {
+                tauri::WindowEvent::ThemeChanged(_) => sync_menu(&app2),
+                // 打开主窗体 / 点击已存在的主窗体（从未聚焦到聚焦）都走这里；
+                // 已聚焦窗口内的点击由前端 mousedown 兜底（main.ts）
+                tauri::WindowEvent::Focused(true) => stop_flash(&app2),
+                _ => {}
             }
         });
     }
@@ -252,8 +260,9 @@ pub fn build(app: &AppHandle) -> anyhow::Result<()> {
 }
 
 /// 面板显示：已可见则仅聚焦，不自动收起（窗口常驻桌面，最小化按钮才缩回托盘）。
-/// 注意：打开面板**不再**停止托盘闪烁 —— 按用户约定（2026-10-15），
-/// 新消息闪烁持续到「打开应用界面后点击任意消息」（前端经 tray_flash_stop 停止）。
+/// 打开主窗即停止托盘闪烁并恢复默认提示（2026-10-16 用户修订，推翻 10-15「点消息才停」约定）：
+/// 新消息闪烁持续到「打开主窗体」或「主窗体上任意鼠标点击」。
+/// 停闪收敛在 raise_main（托盘左键/菜单/全局热键/二实例唤起/通知点击的统一漏斗）。
 fn toggle_panel(app: &AppHandle) {
     raise_main(app);
     let _ = app.emit("panel-shown", ());
@@ -270,6 +279,8 @@ pub fn show_panel(app: &AppHandle) {
 /// 借助 always_on_top 强制置顶一次再还原（社区通用解法），保证第一次就到最前。
 pub(crate) fn raise_main(app: &AppHandle) {
     log::info!("[raise] enter");
+    // 打开主窗体 = 用户已注意到应用：停止新消息闪烁并恢复默认 hint（幂等，未闪烁时无副作用）
+    stop_flash(app);
     // 必须用 get_window：get_webview_window("main") 在窗口含 pane 子 webview 时
     // 被 is_webview_window 过滤恒为 None（tauri 2.12 行为，历史上 NOT FOUND 的根因）
     let w = app.get_window("main");
@@ -323,17 +334,20 @@ pub(crate) fn raise_main(app: &AppHandle) {
     );
 }
 
-/// 新消息到达：托盘图标闪烁（常态图 ↔ 感叹号告警图，500ms 交替）。
-/// **持续闪烁**直到用户在应用内点击任意消息（前端调用 tray_flash_stop）；
-/// 位置稳定性：只用 set_icon（底层 NIM_MODIFY）替换图标像素，
+/// 新消息到达：托盘图标闪烁（常态图 ↔ 感叹号告警图，500ms 交替），
+/// 闪烁开始时把托盘提示（悬停 hint）从产品名换成「您有 n 条新消息」。
+/// **持续闪烁**直到用户打开主窗体 / 主窗体上任意鼠标点击（Rust Focused + 前端 mousedown 兜底，
+/// 点消息的 tray_flash_stop 仍保留）；位置稳定性：只用 set_icon（底层 NIM_MODIFY）替换图标像素，
 /// (hWnd, uID) 身份不变，Explorer 不重排托盘布局（对比删除再添加的错误实现）。
-pub fn flash(app: &AppHandle) {
+pub fn flash(app: &AppHandle, new_count: usize) {
     if FLASHING.swap(true, Ordering::SeqCst) {
         return; // 已在闪烁
     }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            // 闪烁期间 hint 显示未读提醒；停止时由 stop_flash 恢复产品名
+            let _ = tray.set_tooltip(Some(&format!("您有 {new_count} 条新消息")));
             let mut i = 0u32;
             while FLASHING.load(Ordering::SeqCst) {
                 let icon = if i % 2 == 0 { alert_icon() } else { normal_icon() };
@@ -370,11 +384,12 @@ pub fn flash_brief(app: &AppHandle) {
     });
 }
 
-/// 停止闪烁并恢复常态图标
+/// 停止闪烁并恢复常态图标与默认提示（产品名）
 pub fn stop_flash(app: &AppHandle) {
     FLASHING.store(false, Ordering::SeqCst);
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_icon(Some(normal_icon()));
+        let _ = tray.set_tooltip(Some(&default_tooltip(app)));
     }
 }
 

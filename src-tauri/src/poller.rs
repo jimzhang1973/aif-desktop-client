@@ -161,8 +161,10 @@ pub async fn poll_once(state: &Arc<AppState>, app: &AppHandle) {
         }
         if !new_list.is_empty() {
             if new_list.iter().any(|m| !m.muted) {
-                // 新消息托盘闪烁：持续闪到用户在应用内点击任意消息（tray_flash_stop）
-                crate::tray::flash(app);
+                // 新消息托盘闪烁：hint 同步改「您有 n 条新消息」；
+                // 持续闪到用户打开主窗体 / 主窗体上任意鼠标点击（raise_main/Focused/前端 mousedown）
+                let n = new_list.iter().filter(|m| !m.muted).count();
+                crate::tray::flash(app, n);
             }
             let _ = app.emit("messages-updated", ());
         }

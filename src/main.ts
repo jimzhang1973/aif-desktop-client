@@ -3541,7 +3541,7 @@ async function diskDeleteSelected(): Promise<void> {
       );
     diskLog(`删除完成：文件 ${res.deletedFiles} 个、目录 ${res.deletedDirs} 个`, true);
     toast(
-      `删除完成（文件 ${res.deletedFiles}、目录 ${res.deletedDirs}${res.failed.length ? `，${res.failed.length} 个失败` : ""}）`,
+      `删除完成：成功删除 ${res.deletedFiles} 个文件、${res.deletedDirs} 个目录${res.failed.length ? `，失败 ${res.failed.length} 个` : ""}`,
     );
   } catch (e) {
     diskTransferFailStart(task.id, String(e));

@@ -66,6 +66,12 @@ pub struct Settings {
     /// 导航栏图标下显示 2 字功能名称（默认关闭：只显示图标）
     #[serde(default)]
     pub nav_show_labels: bool,
+    /// 内网对接模式（默认关闭）：对接无证书 / 自签名的内部部署服务器时开启。
+    /// 开启后两处放宽：① reqwest 关闭 TLS 证书校验（接受自签名证书，解决握手失败）；
+    /// ② webview CSP 额外放行 http 方案与内联脚本（解决纯 http 内网 IP / 自签名 https
+    /// 的 B/S 页面及其子资源被写死的 51yunwei 白名单拦截而白屏）。属可信内网环境的显式选择。
+    #[serde(default)]
+    pub intranet_mode: bool,
 }
 
 fn default_hotkey() -> String {
@@ -82,6 +88,9 @@ fn default_dnd_end() -> String {
 }
 fn default_escalate_days() -> u64 {
     2
+}
+fn default_intranet_mode() -> bool {
+    false
 }
 
 impl Settings {
@@ -175,6 +184,7 @@ impl Default for Settings {
             daily_digest_enabled: false,
             daily_digest_time: default_digest_time(),
             nav_show_labels: false,
+            intranet_mode: default_intranet_mode(),
         }
     }
 }
@@ -197,6 +207,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(db: Connection, settings: Settings) -> Self {
+        // 内网对接：自签名 / 无证书内网服务器时关闭 TLS 校验（reqwest 默认校验，
+        // 会导致 handshake 失败、连接内网 B/S 直接报错）。该开关由设置项控制，
+        // 默认关闭（公网部署保持严格校验）。注意：client 在启动时构建一次，
+        // 切换该开关后需重启客户端方对 Rust 后端请求生效（webview CSP 则在
+        // 重新打开/刷新页面时即时生效）。
+        let accept_invalid = settings.intranet_mode;
         // 复用 cookie store，使轮询请求自动携带登录会话。
         // 必须设 connect_timeout：reqwest 默认无超时，连接被静默丢弃（睡眠唤醒/
         // 网络切换后的 TCP 黑洞）时请求会永久挂起，后台轮询循环随之停摆——
@@ -206,11 +222,13 @@ impl AppState {
             .cookie_store(true)
             .user_agent("AIF-Desktop-Client/0.1")
             .connect_timeout(Duration::from_secs(10))
+            .danger_accept_invalid_certs(accept_invalid)
             .build()
             .expect("构建 reqwest client 失败");
         let auth_client = Client::builder()
             .user_agent("AIF-Desktop-Client/0.1")
             .connect_timeout(Duration::from_secs(10))
+            .danger_accept_invalid_certs(accept_invalid)
             // 登录是小表单请求；maybe_relogin 在轮询循环内 await，无超时会挂住循环
             .timeout(Duration::from_secs(60))
             .build()

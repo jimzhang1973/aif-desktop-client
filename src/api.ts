@@ -91,6 +91,9 @@ export interface Settings {
   daily_digest_time: string;
   /** 导航栏图标下显示 2 字功能名称（默认 false：只显示图标） */
   nav_show_labels: boolean;
+  /** 内网对接模式（默认 false）：对接无证书 / 自签名内网服务器时开启，
+   *  后端关闭 TLS 校验 + webview CSP 放开 http 方案与内联脚本 */
+  intranet_mode: boolean;
 }
 
 export interface UserInfo {

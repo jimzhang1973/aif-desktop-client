@@ -4944,6 +4944,14 @@ function renderProfile(content: HTMLElement) {
       <label class="switch set-side"><input type="checkbox" id="set-tab-restore" ${s.tab_restore ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
     </div>
     <div class="set-row">
+      ${ico("#10b981", `<path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/><path d="M9 12l2 2 4-4"/>`)}
+      <div class="set-main">
+        <div class="set-title">内网对接模式</div>
+        <div class="set-desc">对接无证书 / 自签名的内部部署服务器（内网 IP、纯 http 或自签名 https）时开启。开启后后端请求关闭 TLS 证书校验（接受自签名证书，解决握手失败）。<b>注：webview 安全策略已在全局放开 http 方案与内联脚本，天然兼容内网 IP / 自签名 https 部署，无需为 CSP 单独开此开关</b>。该开关为可信内网环境的显式选择，公网部署请保持关闭。修改后需<b>重启客户端</b>方对后端请求完全生效</div>
+      </div>
+      <label class="switch set-side"><input type="checkbox" id="set-intranet" ${s.intranet_mode ? "checked" : ""} /><span class="track"></span><span class="thumb"></span></label>
+    </div>
+    <div class="set-row">
       ${ico("#0ea5e9", `<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>`)}
       <div class="set-main"><div class="set-title">心跳间隔</div><div class="set-desc">与 B/S 网页原生心跳同源，兼做会话保活；会话失效时自动用保存的入口凭据重登录（默认 60 秒，30 秒~60 分钟）</div></div>
       <div class="set-side interval-ctrl"><input type="number" id="set-interval" value="${s.poll_interval_secs}" min="30" max="3600" step="30" /><span class="unit">秒</span></div>
@@ -5111,6 +5119,14 @@ function renderProfile(content: HTMLElement) {
     applyNavLabels();
     void api.saveSettings(settings).catch(() =>
       toast("导航栏名称设置保存失败，请点击「保存设置」重试"),
+    );
+  });
+  // 内网对接模式：切换即存（后端 TLS 校验需重启生效，页面 CSP 重新打开/刷新即生效）
+  document.getElementById("set-intranet")?.addEventListener("change", (e) => {
+    if (!settings) return;
+    settings.intranet_mode = (e.target as HTMLInputElement).checked;
+    void api.saveSettings(settings).catch(() =>
+      toast("内网模式设置保存失败，请点击「保存设置」重试"),
     );
   });
   // 「资源管理器右键上传菜单」开关（仅 Windows 渲染）：状态从注册表读，切换即注册/注销（HKCU，免管理员）
@@ -5625,6 +5641,8 @@ async function saveSettings() {
   settings.tab_restore = (document.getElementById("set-tab-restore") as HTMLInputElement).checked;
   settings.multi_entry = (document.getElementById("set-multi-entry") as HTMLInputElement).checked;
   settings.nav_show_labels = (document.getElementById("set-nav-labels") as HTMLInputElement).checked;
+  // 内网对接模式：读 DOM 即时回填（后端 TLS 校验在保存后重启生效，页面 CSP 在重新打开/刷新即生效）
+  settings.intranet_mode = (document.getElementById("set-intranet") as HTMLInputElement).checked;
   // 提醒规则：勿扰时段 / 静音关键词 / 待办超时提醒
   settings.notify_dnd_enabled = (document.getElementById("set-dnd") as HTMLInputElement).checked;
   settings.notify_dnd_start = (document.getElementById("set-dnd-start") as HTMLInputElement).value || "22:00";
